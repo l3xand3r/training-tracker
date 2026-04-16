@@ -723,6 +723,7 @@ export default function TrainingTrackerPrototype() {
   const [selectedSession, setSelectedSession] = useState("all");
   const [compactMode, setCompactMode] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
+  const [overrideStepKey, setOverrideStepKey] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -736,6 +737,7 @@ export default function TrainingTrackerPrototype() {
       setSelectedExerciseId(parsed.selectedExerciseId || exerciseCatalog[0]?.id || "");
       setCompactMode(Boolean(parsed.compactMode));
       setHistory(parsed.history || []);
+      setOverrideStepKey(parsed.overrideStepKey || null);
       setActiveTab((parsed.activeTab as TabKey) || "now");
     } catch (e) {
       console.error(e);
@@ -754,26 +756,35 @@ export default function TrainingTrackerPrototype() {
         selectedExerciseId,
         compactMode,
         history,
+        overrideStepKey,
       })
     );
-  }, [activeTab, doneKeys, currentIndex, weightRules, manualSetWeights, selectedExerciseId, compactMode, history]);
+  }, [activeTab, doneKeys, currentIndex, weightRules, manualSetWeights, selectedExerciseId, compactMode, history, overrideStepKey]);
 
   const doneSet = useMemo(() => new Set(doneKeys), [doneKeys]);
   const actualCurrentIndex = useMemo(
     () => getNextAvailableStep(flatCourse, doneSet, currentIndex),
     [flatCourse, doneSet, currentIndex]
   );
-  const current = flatCourse[actualCurrentIndex] || null;
+  const overrideIndex = useMemo(() => {
+    if (!overrideStepKey) return -1;
+    const idx = flatCourse.findIndex((x) => x.key === overrideStepKey);
+    if (idx < 0) return -1;
+    if (doneSet.has(overrideStepKey)) return -1;
+    return idx;
+  }, [flatCourse, overrideStepKey, doneSet]);
+  const displayIndex = overrideIndex >= 0 ? overrideIndex : actualCurrentIndex;
+  const current = flatCourse[displayIndex] || null;
 
   useEffect(() => {
-    if (actualCurrentIndex !== currentIndex) setCurrentIndex(actualCurrentIndex);
-  }, [actualCurrentIndex, currentIndex]);
+    if (actualCurrentIndex !== currentIndex && overrideIndex < 0) setCurrentIndex(actualCurrentIndex);
+  }, [actualCurrentIndex, currentIndex, overrideIndex]);
 
   const completedCount = doneKeys.length;
   const totalCount = flatCourse.length;
   const progress = totalCount ? Math.round((completedCount / totalCount) * 100) : 0;
   const currentWeight = current
-    ? getEffectiveWeight(flatCourse, actualCurrentIndex, weightRules, manualSetWeights)
+    ? getEffectiveWeight(flatCourse, displayIndex, weightRules, manualSetWeights)
     : null;
 
   const filteredFlat = flatCourse.filter((item) => {
@@ -834,7 +845,8 @@ export default function TrainingTrackerPrototype() {
   const nextStepsPreview = current
     ? flatCourse
         .filter(
-          (x, idx) => idx > actualCurrentIndex && x.week === current.week && x.session === current.session
+          (x, idx) =>
+            idx > displayIndex && x.week === current.week && x.session === current.session
         )
         .slice(0, 3)
     : [];
@@ -845,7 +857,26 @@ export default function TrainingTrackerPrototype() {
     setDoneKeys(nextDone);
     setHistory((prev) => [...prev, current.key]);
     const nextSet = new Set(nextDone);
-    setCurrentIndex(getNextAvailableStep(flatCourse, nextSet, actualCurrentIndex + 1));
+    const nextLinearIndex = getNextAvailableStep(flatCourse, nextSet, actualCurrentIndex + 1);
+    setOverrideStepKey(null);
+    setCurrentIndex(nextLinearIndex);
+  }
+
+  function chooseExerciseStep(exerciseId: string) {
+    if (!current) return;
+    const target = flatCourse.find(
+      (step) =>
+        step.week === current.week &&
+        step.session === current.session &&
+        step.exerciseId === exerciseId &&
+        !doneSet.has(step.key)
+    );
+    if (!target) return;
+    if (target.key === current.key) {
+      setOverrideStepKey(null);
+      return;
+    }
+    setOverrideStepKey(target.key);
   }
 
   function undoLastDone() {
@@ -861,15 +892,15 @@ export default function TrainingTrackerPrototype() {
 
   function adjustCurrentWeight(delta: number) {
     if (!current) return;
-    const currentVal = getEffectiveWeight(flatCourse, actualCurrentIndex, weightRules, manualSetWeights);
+    const currentVal = getEffectiveWeight(flatCourse, displayIndex, weightRules, manualSetWeights);
     if (currentVal === null || currentVal === undefined) return;
     const nextWeight = Math.max(0, Number((currentVal + delta).toFixed(1)));
     const ruleKey = `${current.exerciseId}::${current.setIndex}`;
     const existing = weightRules[ruleKey] || [];
-    const cleaned = existing.filter((r) => r.fromIndex !== actualCurrentIndex);
+    const cleaned = existing.filter((r) => r.fromIndex !== displayIndex);
     setWeightRules({
       ...weightRules,
-      [ruleKey]: [...cleaned, { fromIndex: actualCurrentIndex, weight: nextWeight }].sort(
+      [ruleKey]: [...cleaned, { fromIndex: displayIndex, weight: nextWeight }].sort(
         (a, b) => a.fromIndex - b.fromIndex
       ),
     });
@@ -886,6 +917,7 @@ export default function TrainingTrackerPrototype() {
     setWeightRules({});
     setManualSetWeights({});
     setHistory([]);
+    setOverrideStepKey(null);
   }
 
   function moveToAdjacentStep(direction: number) {
@@ -895,6 +927,7 @@ export default function TrainingTrackerPrototype() {
   }
 
   const selectedExercise = exerciseCatalog.find((e) => e.id === selectedExerciseId);
+  const isOverrideActive = overrideIndex >= 0;
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#fff8f1,_#f8fafc_30%,_#f3f0ff_65%,_#eaf6ff)] p-3 md:p-8">
@@ -1003,8 +1036,17 @@ export default function TrainingTrackerPrototype() {
                 {current ? (
                   <>
                     {current.note ? (
-                      <div className="rounded-[22px] bg-white/78 p-4 ring-1 ring-slate-200/70">
-                        <div className="text-sm text-slate-600">{current.note}</div>
+                      <div className="rounded-[22px] bg-white/82 p-4 ring-1 ring-slate-200/80">
+                        <div className="text-sm text-slate-800">{current.note}</div>
+                      </div>
+                    ) : null}
+
+                    {isOverrideActive ? (
+                      <div className="rounded-[22px] bg-amber-50 p-4 ring-1 ring-amber-200/70">
+                        <div className="text-sm font-medium text-amber-900">Выбран внеплановый подход</div>
+                        <div className="mt-1 text-xs text-amber-800">
+                          После выполнения этого подхода приложение вернётся к обычной линейной очереди тренировки.
+                        </div>
                       </div>
                     ) : null}
 
@@ -1155,6 +1197,8 @@ export default function TrainingTrackerPrototype() {
                     );
                     const completed = steps.filter((x) => doneSet.has(x.key)).length;
                     const isCurrentExercise = steps.some((x) => x.key === current?.key);
+                    const nextAvailableStep = steps.find((x) => !doneSet.has(x.key));
+                    const canChoose = Boolean(nextAvailableStep) && !isCurrentExercise;
                     return (
                       <div
                         key={`${current?.week}-${current?.session}-${ex.id}`}
@@ -1167,12 +1211,15 @@ export default function TrainingTrackerPrototype() {
                               {completed} из {steps.length} подходов
                             </div>
                           </div>
-                          <Badge
+                          <Button
+                            size="sm"
                             variant={isCurrentExercise ? "default" : completed === steps.length ? "secondary" : "outline"}
-                            className="rounded-full"
+                            className="rounded-full px-4"
+                            onClick={() => chooseExerciseStep(ex.id)}
+                            disabled={!canChoose}
                           >
-                            {isCurrentExercise ? "Сейчас" : completed === steps.length ? "Готово" : "Дальше"}
-                          </Badge>
+                            {isCurrentExercise ? "Сейчас" : completed === steps.length ? "Готово" : "Выбрать"}
+                          </Button>
                         </div>
                       </div>
                     );
