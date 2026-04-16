@@ -1,5 +1,4 @@
 'use client'
-'use client'
 
 import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
@@ -23,7 +22,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -35,6 +33,8 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 const STORAGE_KEY = "training-tracker-v3";
+
+type TabKey = "now" | "plan" | "weights" | "progress";
 
 function slugify(value: string) {
   return value
@@ -702,10 +702,18 @@ function getSessionLabel(week: number, session: number) {
   return `Неделя ${week} · Тренировка ${session}`;
 }
 
+const TAB_ITEMS: { key: TabKey; label: string; textClass?: string }[] = [
+  { key: "now", label: "Сейчас", textClass: "text-[12px] sm:text-sm" },
+  { key: "plan", label: "План", textClass: "text-[12px] sm:text-sm" },
+  { key: "weights", label: "Вес", textClass: "text-[11px] sm:text-sm" },
+  { key: "progress", label: "Прогресс", textClass: "text-[11px] sm:text-sm" },
+];
+
 export default function TrainingTrackerPrototype() {
   const flatCourse = useMemo(() => buildFlatCourse(COURSE), []);
   const exerciseCatalog = useMemo(() => getExerciseInstances(COURSE), []);
 
+  const [activeTab, setActiveTab] = useState<TabKey>("now");
   const [doneKeys, setDoneKeys] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [weightRules, setWeightRules] = useState<Record<string, WeightRule[]>>({});
@@ -728,6 +736,7 @@ export default function TrainingTrackerPrototype() {
       setSelectedExerciseId(parsed.selectedExerciseId || exerciseCatalog[0]?.id || "");
       setCompactMode(Boolean(parsed.compactMode));
       setHistory(parsed.history || []);
+      setActiveTab((parsed.activeTab as TabKey) || "now");
     } catch (e) {
       console.error(e);
     }
@@ -737,6 +746,7 @@ export default function TrainingTrackerPrototype() {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
+        activeTab,
         doneKeys,
         currentIndex,
         weightRules,
@@ -746,7 +756,7 @@ export default function TrainingTrackerPrototype() {
         history,
       })
     );
-  }, [doneKeys, currentIndex, weightRules, manualSetWeights, selectedExerciseId, compactMode, history]);
+  }, [activeTab, doneKeys, currentIndex, weightRules, manualSetWeights, selectedExerciseId, compactMode, history]);
 
   const doneSet = useMemo(() => new Set(doneKeys), [doneKeys]);
   const actualCurrentIndex = useMemo(
@@ -950,35 +960,32 @@ export default function TrainingTrackerPrototype() {
           </Card>
         </motion.div>
 
-        <Tabs defaultValue="now" className="space-y-4">
-          <TabsList className="grid h-auto w-full grid-cols-4 gap-1 rounded-[26px] border border-white/70 bg-white/80 p-1 shadow-[0_8px_30px_rgba(15,23,42,0.06)]">
-            <TabsTrigger
-              value="now"
-              className="h-11 rounded-[22px] border-0 px-2 py-0 text-[12px] font-medium text-slate-600 shadow-none transition-all data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-[0_4px_14px_rgba(15,23,42,0.10)] sm:text-sm"
-            >
-              Сейчас
-            </TabsTrigger>
-            <TabsTrigger
-              value="plan"
-              className="h-11 rounded-[22px] border-0 px-2 py-0 text-[12px] font-medium text-slate-600 shadow-none transition-all data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-[0_4px_14px_rgba(15,23,42,0.10)] sm:text-sm"
-            >
-              План
-            </TabsTrigger>
-            <TabsTrigger
-              value="weights"
-              className="h-11 rounded-[22px] border-0 px-2 py-0 text-[11px] font-medium text-slate-600 shadow-none transition-all data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-[0_4px_14px_rgba(15,23,42,0.10)] sm:text-sm"
-            >
-              Вес
-            </TabsTrigger>
-            <TabsTrigger
-              value="progress"
-              className="h-11 rounded-[22px] border-0 px-2 py-0 text-[11px] font-medium text-slate-600 shadow-none transition-all data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-[0_4px_14px_rgba(15,23,42,0.10)] sm:text-sm"
-            >
-              Прогресс
-            </TabsTrigger>
-          </TabsList>
+        <div className="rounded-[26px] border border-white/70 bg-white/80 p-1 shadow-[0_8px_30px_rgba(15,23,42,0.06)]">
+          <div className="grid grid-cols-4 gap-1">
+            {TAB_ITEMS.map((tab) => {
+              const isActive = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className={[
+                    "h-11 rounded-[22px] px-2 text-center font-medium transition-all",
+                    tab.textClass || "text-sm",
+                    isActive
+                      ? "bg-white text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.10)]"
+                      : "bg-transparent text-slate-600",
+                  ].join(" ")}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-          <TabsContent value="now" className="space-y-4">
+        {activeTab === "now" && (
+          <div className="space-y-4">
             <Card className="rounded-[30px] border border-white/60 bg-white/88 shadow-[0_18px_60px_rgba(15,23,42,0.10)] backdrop-blur">
               <CardHeader className={compactMode ? "pb-1" : "pb-2"}>
                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -1173,9 +1180,11 @@ export default function TrainingTrackerPrototype() {
                 </CardContent>
               </Card>
             ) : null}
-          </TabsContent>
+          </div>
+        )}
 
-          <TabsContent value="plan" className="space-y-4">
+        {activeTab === "plan" && (
+          <div className="space-y-4">
             <Card className="rounded-[30px] border border-white/60 bg-white/88 shadow-[0_18px_60px_rgba(15,23,42,0.10)] backdrop-blur">
               <CardHeader>
                 <CardTitle className="text-lg text-slate-900">Весь курс</CardTitle>
@@ -1259,9 +1268,11 @@ export default function TrainingTrackerPrototype() {
                 </ScrollArea>
               </CardContent>
             </Card>
-          </TabsContent>
+          </div>
+        )}
 
-          <TabsContent value="weights" className="space-y-4">
+        {activeTab === "weights" && (
+          <div className="space-y-4">
             <Card className="rounded-[30px] border border-white/60 bg-white/88 shadow-[0_18px_60px_rgba(15,23,42,0.10)] backdrop-blur">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg text-slate-900">
@@ -1324,9 +1335,11 @@ export default function TrainingTrackerPrototype() {
                 ) : null}
               </CardContent>
             </Card>
-          </TabsContent>
+          </div>
+        )}
 
-          <TabsContent value="progress" className="space-y-4">
+        {activeTab === "progress" && (
+          <div className="space-y-4">
             <Card className="rounded-[30px] border border-white/60 bg-white/88 shadow-[0_18px_60px_rgba(15,23,42,0.10)] backdrop-blur">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg text-slate-900">
@@ -1381,8 +1394,8 @@ export default function TrainingTrackerPrototype() {
                 </Button>
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
+          </div>
+        )}
       </div>
     </div>
   );
