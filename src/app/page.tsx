@@ -114,10 +114,7 @@ const T1A = (
   back: WorkoutSet[],
   options: { includeTriceps?: boolean; absNote?: string } = {}
 ): ExerciseItem[] => [
-  exercise("Болгарский выпад", b, {
-    note: "Одна гантель",
-    pair: "Первая пара",
-  }),
+  exercise("Болгарский выпад", b, { note: "Одна гантель", pair: "Первая пара" }),
   exercise("Тяга гантели к низу живота", row, { pair: "Первая пара" }),
   exercise("Румынская", rdl, { pair: "Вторая пара" }),
   exercise("Отжимания", push, { pair: "Вторая пара" }),
@@ -428,10 +425,7 @@ const COURSE: WeekItem[] = [
           [set("12", 3), set("13", 6), set("13", 6)],
           [set("10"), set("?"), set("10")],
           [set("10", 0), set("12", 3), set("12", 3), set("12", 3)],
-          {
-            pulloverNote:
-              "Если с резинками никак — дублируйте тягу к груди из другой тренировки",
-          }
+          { pulloverNote: "Если с резинками никак — дублируйте тягу к груди из другой тренировки" }
         ),
       },
       {
@@ -636,9 +630,7 @@ function buildFlatCourse(course: WeekItem[]): FlatStep[] {
               note: ex.note,
               pair: pairKey,
               exerciseIndex:
-                exerciseIndexInSession >= 0
-                  ? exerciseIndexInSession
-                  : exerciseIndexInPair,
+                exerciseIndexInSession >= 0 ? exerciseIndexInSession : exerciseIndexInPair,
               setIndex,
               reps: workSet.reps,
               defaultWeight: workSet.weight,
@@ -653,8 +645,7 @@ function buildFlatCourse(course: WeekItem[]): FlatStep[] {
 }
 
 function getExerciseInstances(course: WeekItem[]) {
-  const map: Record<string, { id: string; name: string; sets: WorkoutSet[] }> =
-    {};
+  const map: Record<string, { id: string; name: string; sets: WorkoutSet[] }> = {};
   course.forEach((week) => {
     week.sessions.forEach((session) => {
       if (session.status !== "active") return;
@@ -671,11 +662,7 @@ function getExerciseInstances(course: WeekItem[]) {
   return Object.values(map);
 }
 
-function getNextAvailableStep(
-  flat: FlatStep[],
-  doneSet: Set<string>,
-  preferredIndex = 0
-) {
+function getNextAvailableStep(flat: FlatStep[], doneSet: Set<string>, preferredIndex = 0) {
   for (let i = preferredIndex; i < flat.length; i += 1) {
     if (!doneSet.has(flat[i].key)) return i;
   }
@@ -721,15 +708,9 @@ export default function TrainingTrackerPrototype() {
 
   const [doneKeys, setDoneKeys] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [weightRules, setWeightRules] = useState<Record<string, WeightRule[]>>(
-    {}
-  );
-  const [manualSetWeights, setManualSetWeights] = useState<
-    Record<string, number | null>
-  >({});
-  const [selectedExerciseId, setSelectedExerciseId] = useState(
-    exerciseCatalog[0]?.id || ""
-  );
+  const [weightRules, setWeightRules] = useState<Record<string, WeightRule[]>>({});
+  const [manualSetWeights, setManualSetWeights] = useState<Record<string, number | null>>({});
+  const [selectedExerciseId, setSelectedExerciseId] = useState(exerciseCatalog[0]?.id || "");
   const [selectedWeek, setSelectedWeek] = useState("all");
   const [selectedSession, setSelectedSession] = useState("all");
   const [compactMode, setCompactMode] = useState(false);
@@ -765,45 +746,29 @@ export default function TrainingTrackerPrototype() {
         history,
       })
     );
-  }, [
-    doneKeys,
-    currentIndex,
-    weightRules,
-    manualSetWeights,
-    selectedExerciseId,
-    compactMode,
-    history,
-  ]);
+  }, [doneKeys, currentIndex, weightRules, manualSetWeights, selectedExerciseId, compactMode, history]);
 
   const doneSet = useMemo(() => new Set(doneKeys), [doneKeys]);
-
   const actualCurrentIndex = useMemo(
     () => getNextAvailableStep(flatCourse, doneSet, currentIndex),
     [flatCourse, doneSet, currentIndex]
   );
-
   const current = flatCourse[actualCurrentIndex] || null;
 
   useEffect(() => {
-    if (actualCurrentIndex !== currentIndex) {
-      setCurrentIndex(actualCurrentIndex);
-    }
+    if (actualCurrentIndex !== currentIndex) setCurrentIndex(actualCurrentIndex);
   }, [actualCurrentIndex, currentIndex]);
 
   const completedCount = doneKeys.length;
   const totalCount = flatCourse.length;
-  const progress = totalCount
-    ? Math.round((completedCount / totalCount) * 100)
-    : 0;
-
+  const progress = totalCount ? Math.round((completedCount / totalCount) * 100) : 0;
   const currentWeight = current
     ? getEffectiveWeight(flatCourse, actualCurrentIndex, weightRules, manualSetWeights)
     : null;
 
   const filteredFlat = flatCourse.filter((item) => {
     const weekOk = selectedWeek === "all" || String(item.week) === selectedWeek;
-    const sessionOk =
-      selectedSession === "all" || String(item.session) === selectedSession;
+    const sessionOk = selectedSession === "all" || String(item.session) === selectedSession;
     return weekOk && sessionOk;
   });
 
@@ -821,12 +786,8 @@ export default function TrainingTrackerPrototype() {
           done: 0,
         };
       }
-
-      const sets = flatCourse.filter(
-        (x) => x.week === week.week && x.session === session.number
-      );
+      const sets = flatCourse.filter((x) => x.week === week.week && x.session === session.number);
       const done = sets.filter((x) => doneSet.has(x.key)).length;
-
       return {
         key: `${week.week}-${session.number}`,
         week: week.week,
@@ -835,9 +796,7 @@ export default function TrainingTrackerPrototype() {
         status:
           done === sets.length
             ? "done"
-            : current &&
-              current.week === week.week &&
-              current.session === session.number
+            : current && current.week === week.week && current.session === session.number
             ? "current"
             : "upcoming",
         total: sets.length,
@@ -847,37 +806,25 @@ export default function TrainingTrackerPrototype() {
   }));
 
   const groupedExercises = current
-    ? COURSE.find((w) => w.week === current.week)?.sessions.find(
-        (s) => s.number === current.session
-      )?.exercises || []
+    ? COURSE.find((w) => w.week === current.week)?.sessions.find((s) => s.number === current.session)
+        ?.exercises || []
     : [];
 
   const doneInCurrentSession = current
     ? flatCourse.filter(
-        (x) =>
-          x.week === current.week &&
-          x.session === current.session &&
-          doneSet.has(x.key)
+        (x) => x.week === current.week && x.session === current.session && doneSet.has(x.key)
       ).length
     : 0;
-
   const totalInCurrentSession = current
-    ? flatCourse.filter(
-        (x) => x.week === current.week && x.session === current.session
-      ).length
+    ? flatCourse.filter((x) => x.week === current.week && x.session === current.session).length
     : 0;
-
   const currentSessionProgress = totalInCurrentSession
     ? Math.round((doneInCurrentSession / totalInCurrentSession) * 100)
     : 0;
-
   const nextStepsPreview = current
     ? flatCourse
         .filter(
-          (x, idx) =>
-            idx > actualCurrentIndex &&
-            x.week === current.week &&
-            x.session === current.session
+          (x, idx) => idx > actualCurrentIndex && x.week === current.week && x.session === current.session
         )
         .slice(0, 3)
     : [];
@@ -904,19 +851,12 @@ export default function TrainingTrackerPrototype() {
 
   function adjustCurrentWeight(delta: number) {
     if (!current) return;
-    const currentVal = getEffectiveWeight(
-      flatCourse,
-      actualCurrentIndex,
-      weightRules,
-      manualSetWeights
-    );
+    const currentVal = getEffectiveWeight(flatCourse, actualCurrentIndex, weightRules, manualSetWeights);
     if (currentVal === null || currentVal === undefined) return;
-
     const nextWeight = Math.max(0, Number((currentVal + delta).toFixed(1)));
     const ruleKey = `${current.exerciseId}::${current.setIndex}`;
     const existing = weightRules[ruleKey] || [];
     const cleaned = existing.filter((r) => r.fromIndex !== actualCurrentIndex);
-
     setWeightRules({
       ...weightRules,
       [ruleKey]: [...cleaned, { fromIndex: actualCurrentIndex, weight: nextWeight }].sort(
@@ -940,10 +880,7 @@ export default function TrainingTrackerPrototype() {
 
   function moveToAdjacentStep(direction: number) {
     if (!flatCourse.length) return;
-    const nextIndex = Math.max(
-      0,
-      Math.min(flatCourse.length - 1, actualCurrentIndex + direction)
-    );
+    const nextIndex = Math.max(0, Math.min(flatCourse.length - 1, actualCurrentIndex + direction));
     setCurrentIndex(nextIndex);
   }
 
@@ -962,7 +899,7 @@ export default function TrainingTrackerPrototype() {
                     <span>12-недельный курс · iPhone view</span>
                   </div>
                   <h1 className="mt-2 text-[27px] font-semibold tracking-tight text-slate-900">
-                    Training Tracker V3
+                    Training Tracker
                   </h1>
                 </div>
                 <Badge className="rounded-full border-0 bg-gradient-to-r from-orange-100 to-violet-100 px-3 py-1 text-slate-700">
@@ -977,48 +914,35 @@ export default function TrainingTrackerPrototype() {
               <div className="mt-4 grid grid-cols-3 gap-2 text-center text-sm">
                 <div className="rounded-[24px] bg-gradient-to-br from-amber-50 to-orange-100/75 p-3">
                   <div className="flex items-center justify-center gap-1 text-slate-500">
-                    <Target className="h-4 w-4" />
-                    Подходов
+                    <Target className="h-4 w-4" />Подходов
                   </div>
-                  <div className="mt-1 font-semibold">
-                    {completedCount}/{totalCount}
-                  </div>
+                  <div className="mt-1 font-semibold">{completedCount}/{totalCount}</div>
                 </div>
                 <div className="rounded-[24px] bg-gradient-to-br from-fuchsia-50 to-violet-100/75 p-3">
                   <div className="flex items-center justify-center gap-1 text-slate-500">
-                    <Flame className="h-4 w-4" />
-                    Текущая неделя
+                    <Flame className="h-4 w-4" />Текущая неделя
                   </div>
                   <div className="mt-1 font-semibold">{current ? current.week : "—"}</div>
                 </div>
                 <div className="rounded-[24px] bg-gradient-to-br from-cyan-50 to-sky-100/75 p-3">
                   <div className="flex items-center justify-center gap-1 text-slate-500">
-                    <Sparkles className="h-4 w-4" />
-                    Тренировка
+                    <Sparkles className="h-4 w-4" />Тренировка
                   </div>
-                  <div className="mt-1 font-semibold">
-                    {current ? current.session : "—"}
-                  </div>
+                  <div className="mt-1 font-semibold">{current ? current.session : "—"}</div>
                 </div>
               </div>
 
               <div className="mt-4 flex items-center justify-between gap-3 rounded-[24px] bg-gradient-to-r from-slate-900 via-purple-900 to-slate-900 px-4 py-3 text-white">
                 <div>
                   <div className="text-xs text-slate-300">Режим интерфейса</div>
-                  <div className="text-sm font-medium">
-                    {compactMode ? "Компактный" : "Стандартный"}
-                  </div>
+                  <div className="text-sm font-medium">{compactMode ? "Компактный" : "Стандартный"}</div>
                 </div>
                 <Button
                   variant="secondary"
                   className="shrink-0 whitespace-nowrap rounded-2xl bg-white/95 text-slate-800 shadow-sm hover:bg-white"
                   onClick={() => setCompactMode((prev) => !prev)}
                 >
-                  {compactMode ? (
-                    <Moon className="mr-2 h-4 w-4" />
-                  ) : (
-                    <Sparkles className="mr-2 h-4 w-4" />
-                  )}
+                  {compactMode ? <Moon className="mr-2 h-4 w-4" /> : <Sparkles className="mr-2 h-4 w-4" />}
                   {compactMode ? "Обычный" : "Компактный"}
                 </Button>
               </div>
@@ -1027,28 +951,28 @@ export default function TrainingTrackerPrototype() {
         </motion.div>
 
         <Tabs defaultValue="now" className="space-y-4">
-          <TabsList className="grid h-auto w-full grid-cols-4 gap-1 rounded-[26px] border border-white/70 bg-white/80 p-1.5 shadow-[0_8px_30px_rgba(15,23,42,0.06)]">
+          <TabsList className="grid h-auto w-full grid-cols-4 gap-1 rounded-[26px] border border-white/70 bg-white/80 p-1 shadow-[0_8px_30px_rgba(15,23,42,0.06)]">
             <TabsTrigger
               value="now"
-              className="rounded-2xl px-2 py-2.5 text-[12px] data-[state=active]:bg-gradient-to-r data-[state=active]:from-amber-400 data-[state=active]:to-fuchsia-500 data-[state=active]:text-white sm:text-sm"
+              className="h-11 rounded-[22px] border-0 px-2 py-0 text-[12px] font-medium text-slate-600 shadow-none transition-all data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-[0_4px_14px_rgba(15,23,42,0.10)] sm:text-sm"
             >
               Сейчас
             </TabsTrigger>
             <TabsTrigger
               value="plan"
-              className="rounded-2xl px-2 py-2.5 text-[12px] data-[state=active]:bg-gradient-to-r data-[state=active]:from-amber-400 data-[state=active]:to-fuchsia-500 data-[state=active]:text-white sm:text-sm"
+              className="h-11 rounded-[22px] border-0 px-2 py-0 text-[12px] font-medium text-slate-600 shadow-none transition-all data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-[0_4px_14px_rgba(15,23,42,0.10)] sm:text-sm"
             >
               План
             </TabsTrigger>
             <TabsTrigger
               value="weights"
-              className="rounded-2xl px-2 py-2.5 text-[11px] data-[state=active]:bg-gradient-to-r data-[state=active]:from-amber-400 data-[state=active]:to-fuchsia-500 data-[state=active]:text-white sm:text-sm"
+              className="h-11 rounded-[22px] border-0 px-2 py-0 text-[11px] font-medium text-slate-600 shadow-none transition-all data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-[0_4px_14px_rgba(15,23,42,0.10)] sm:text-sm"
             >
               Вес
             </TabsTrigger>
             <TabsTrigger
               value="progress"
-              className="rounded-2xl px-2 py-2.5 text-[11px] data-[state=active]:bg-gradient-to-r data-[state=active]:from-amber-400 data-[state=active]:to-fuchsia-500 data-[state=active]:text-white sm:text-sm"
+              className="h-11 rounded-[22px] border-0 px-2 py-0 text-[11px] font-medium text-slate-600 shadow-none transition-all data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-[0_4px_14px_rgba(15,23,42,0.10)] sm:text-sm"
             >
               Прогресс
             </TabsTrigger>
@@ -1062,13 +986,9 @@ export default function TrainingTrackerPrototype() {
                   {current ? current.exerciseName : "Курс завершён"}
                 </CardTitle>
                 {current ? (
-                  <div className="text-sm text-slate-500">
-                    {getSessionLabel(current.week, current.session)} · {current.pair}
-                  </div>
+                  <div className="text-sm text-slate-500">{getSessionLabel(current.week, current.session)} · {current.pair}</div>
                 ) : (
-                  <div className="text-sm text-slate-500">
-                    Все запланированные подходы отмечены как выполненные
-                  </div>
+                  <div className="text-sm text-slate-500">Все запланированные подходы отмечены как выполненные</div>
                 )}
               </CardHeader>
 
@@ -1084,30 +1004,22 @@ export default function TrainingTrackerPrototype() {
                     <div className="rounded-[26px] bg-[linear-gradient(135deg,#fb923c_0%,#f472b6_48%,#8b5cf6_100%)] p-4 text-white shadow-[0_14px_34px_rgba(244,114,182,0.22)]">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <div className="text-xs text-slate-100">
-                            Прогресс текущей тренировки
-                          </div>
+                          <div className="text-xs text-slate-100">Прогресс текущей тренировки</div>
                           <div className="mt-1 text-lg font-semibold">
                             {doneInCurrentSession}/{totalInCurrentSession} подходов
                           </div>
                         </div>
-                        <Badge className="rounded-full bg-white/15 text-white">
-                          {currentSessionProgress}%
-                        </Badge>
+                        <Badge className="rounded-full bg-white/15 text-white">{currentSessionProgress}%</Badge>
                       </div>
                       <div className="mt-3">
                         <Progress value={currentSessionProgress} className="h-2 bg-white/20" />
                       </div>
                     </div>
 
-                    <div
-                      className={`grid ${compactMode ? "grid-cols-1" : "grid-cols-2"} gap-3`}
-                    >
+                    <div className={`grid ${compactMode ? "grid-cols-1" : "grid-cols-2"} gap-3`}>
                       <div className="rounded-[24px] bg-white/82 p-4 shadow-[0_6px_20px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70">
                         <div className="text-xs text-slate-500">Подход</div>
-                        <div className="mt-1 text-2xl font-semibold">
-                          {current.setIndex + 1}
-                        </div>
+                        <div className="mt-1 text-2xl font-semibold">{current.setIndex + 1}</div>
                       </div>
                       <div className="rounded-[24px] bg-white/82 p-4 shadow-[0_6px_20px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70">
                         <div className="text-xs text-slate-500">Повторения</div>
@@ -1117,15 +1029,11 @@ export default function TrainingTrackerPrototype() {
 
                     <div className="rounded-[24px] bg-white/82 p-4 shadow-[0_6px_20px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70">
                       <div className="flex items-center gap-2 text-xs text-slate-500">
-                        <Scale className="h-4 w-4" />
-                        Вес
+                        <Scale className="h-4 w-4" /> Вес
                       </div>
-                      <div className="mt-1 text-2xl font-semibold">
-                        {formatWeight(currentWeight)}
-                      </div>
+                      <div className="mt-1 text-2xl font-semibold">{formatWeight(currentWeight)}</div>
                       <div className="mt-2 text-xs text-slate-500">
-                        Изменение здесь становится новым базовым значением для всех
-                        будущих таких же упражнений в этом же номере подхода.
+                        Изменение здесь становится новым базовым значением для всех будущих таких же упражнений в этом же номере подхода.
                       </div>
                     </div>
 
@@ -1139,7 +1047,6 @@ export default function TrainingTrackerPrototype() {
                         >
                           <ArrowLeft className="h-4 w-4" />
                         </Button>
-
                         <Button
                           className="rounded-[18px] border border-slate-200/80 bg-white/80 px-2 text-xs hover:bg-white"
                           size="sm"
@@ -1149,7 +1056,6 @@ export default function TrainingTrackerPrototype() {
                         >
                           -0.5
                         </Button>
-
                         <Button
                           className="rounded-[18px] border border-slate-200/80 bg-white/80 px-2 text-xs hover:bg-white"
                           size="sm"
@@ -1159,7 +1065,6 @@ export default function TrainingTrackerPrototype() {
                         >
                           +0.5
                         </Button>
-
                         <Button
                           className="rounded-[18px] border border-slate-200/80 bg-white/80 px-2 hover:bg-white"
                           size="sm"
@@ -1169,7 +1074,6 @@ export default function TrainingTrackerPrototype() {
                           <ArrowRight className="h-4 w-4" />
                         </Button>
                       </div>
-
                       <div className="grid grid-cols-2 gap-2">
                         <Button
                           className="w-full rounded-[20px] border border-slate-200/80 bg-white/85 py-3 text-slate-900 shadow-sm hover:bg-white"
@@ -1179,27 +1083,21 @@ export default function TrainingTrackerPrototype() {
                         >
                           Назад
                         </Button>
-
                         <Button
                           className="w-full rounded-[20px] bg-slate-900 py-3 text-white shadow-sm hover:bg-slate-800"
                           onClick={markCurrentDone}
                         >
-                          <Check className="mr-2 h-4 w-4 shrink-0" />
-                          Готово
+                          <Check className="mr-2 h-4 w-4 shrink-0" />Готово
                         </Button>
                       </div>
                     </div>
 
                     {nextStepsPreview.length > 0 ? (
                       <div className="rounded-[24px] bg-white/70 p-4 shadow-[0_6px_20px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70">
-                        <div className="mb-2 text-sm font-medium text-slate-700">
-                          Дальше по тренировке
-                        </div>
+                        <div className="mb-2 text-sm font-medium text-slate-700">Дальше по тренировке</div>
                         <div className="space-y-2">
                           {nextStepsPreview.map((step) => {
-                            const previewIndex = flatCourse.findIndex(
-                              (x) => x.key === step.key
-                            );
+                            const previewIndex = flatCourse.findIndex((x) => x.key === step.key);
                             return (
                               <div
                                 key={step.key}
@@ -1207,21 +1105,14 @@ export default function TrainingTrackerPrototype() {
                               >
                                 <div className="flex items-center justify-between gap-3">
                                   <div>
-                                    <div className="text-sm font-medium">
-                                      {step.exerciseName}
-                                    </div>
+                                    <div className="text-sm font-medium">{step.exerciseName}</div>
                                     <div className="text-xs text-slate-500">
                                       Подход {step.setIndex + 1} · {step.reps} повторений
                                     </div>
                                   </div>
                                   <div className="text-sm text-slate-500">
                                     {formatWeight(
-                                      getEffectiveWeight(
-                                        flatCourse,
-                                        previewIndex,
-                                        weightRules,
-                                        manualSetWeights
-                                      )
+                                      getEffectiveWeight(flatCourse, previewIndex, weightRules, manualSetWeights)
                                     )}
                                   </div>
                                 </div>
@@ -1235,15 +1126,10 @@ export default function TrainingTrackerPrototype() {
                 ) : (
                   <div className="space-y-4">
                     <div className="rounded-[22px] bg-gradient-to-r from-emerald-50 to-teal-50 p-4 text-sm text-emerald-700 ring-1 ring-emerald-200/60">
-                      Курс полностью завершён. Прогресс и изменения веса сохранены
-                      локально на устройстве.
+                      Курс полностью завершён. Прогресс и изменения веса сохранены локально на устройстве.
                     </div>
-                    <Button
-                      className="w-full rounded-2xl"
-                      onClick={resetAll}
-                    >
-                      <RotateCcw className="mr-2 h-4 w-4" />
-                      Сбросить и начать заново
+                    <Button className="w-full rounded-2xl" onClick={resetAll}>
+                      <RotateCcw className="mr-2 h-4 w-4" /> Сбросить и начать заново
                     </Button>
                   </div>
                 )}
@@ -1253,21 +1139,15 @@ export default function TrainingTrackerPrototype() {
             {groupedExercises.length > 0 ? (
               <Card className="rounded-[30px] border border-white/60 bg-white/88 shadow-[0_18px_60px_rgba(15,23,42,0.10)] backdrop-blur">
                 <CardHeader>
-                  <CardTitle className="text-lg text-slate-900">
-                    Текущая тренировка
-                  </CardTitle>
+                  <CardTitle className="text-lg text-slate-900">Текущая тренировка</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {groupedExercises.map((ex) => {
                     const steps = flatCourse.filter(
-                      (x) =>
-                        x.week === current?.week &&
-                        x.session === current?.session &&
-                        x.exerciseId === ex.id
+                      (x) => x.week === current?.week && x.session === current?.session && x.exerciseId === ex.id
                     );
                     const completed = steps.filter((x) => doneSet.has(x.key)).length;
                     const isCurrentExercise = steps.some((x) => x.key === current?.key);
-
                     return (
                       <div
                         key={`${current?.week}-${current?.session}-${ex.id}`}
@@ -1281,20 +1161,10 @@ export default function TrainingTrackerPrototype() {
                             </div>
                           </div>
                           <Badge
-                            variant={
-                              isCurrentExercise
-                                ? "default"
-                                : completed === steps.length
-                                ? "secondary"
-                                : "outline"
-                            }
+                            variant={isCurrentExercise ? "default" : completed === steps.length ? "secondary" : "outline"}
                             className="rounded-full"
                           >
-                            {isCurrentExercise
-                              ? "Сейчас"
-                              : completed === steps.length
-                              ? "Готово"
-                              : "Дальше"}
+                            {isCurrentExercise ? "Сейчас" : completed === steps.length ? "Готово" : "Дальше"}
                           </Badge>
                         </div>
                       </div>
@@ -1328,7 +1198,6 @@ export default function TrainingTrackerPrototype() {
                       ))}
                     </SelectContent>
                   </Select>
-
                   <Select
                     value={selectedSession}
                     onValueChange={(value) => setSelectedSession(value ?? "all")}
@@ -1350,15 +1219,12 @@ export default function TrainingTrackerPrototype() {
                       const idx = flatCourse.findIndex((x) => x.key === item.key);
                       const done = doneSet.has(item.key);
                       const active = current?.key === item.key;
-
                       return (
                         <button
                           key={item.key}
                           onClick={() => jumpToStep(item.key)}
                           className={`w-full rounded-2xl p-4 text-left transition ${
-                            active
-                              ? "bg-slate-900 text-white"
-                              : "bg-slate-100 hover:bg-slate-200"
+                            active ? "bg-slate-900 text-white" : "bg-slate-100 hover:bg-slate-200"
                           }`}
                         >
                           <div className="flex items-start justify-between gap-3">
@@ -1368,19 +1234,12 @@ export default function TrainingTrackerPrototype() {
                               </div>
                               <div className="mt-1 font-medium">{item.exerciseName}</div>
                               <div className="mt-1 text-sm opacity-70">
-                                Подход {item.setIndex + 1} · Повторения {item.reps} ·
-                                Вес{" "}
+                                Подход {item.setIndex + 1} · Повторения {item.reps} · Вес{" "}
                                 {formatWeight(
-                                  getEffectiveWeight(
-                                    flatCourse,
-                                    idx,
-                                    weightRules,
-                                    manualSetWeights
-                                  )
+                                  getEffectiveWeight(flatCourse, idx, weightRules, manualSetWeights)
                                 )}
                               </div>
                             </div>
-
                             <div className="flex items-center gap-2">
                               <Badge
                                 variant={done ? "secondary" : active ? "default" : "outline"}
@@ -1389,9 +1248,7 @@ export default function TrainingTrackerPrototype() {
                                 {done ? "Готово" : active ? "Сейчас" : ""}
                               </Badge>
                               <ChevronRight
-                                className={`h-4 w-4 ${
-                                  active ? "text-white" : "text-slate-400"
-                                }`}
+                                className={`h-4 w-4 ${active ? "text-white" : "text-slate-400"}`}
                               />
                             </div>
                           </div>
@@ -1408,8 +1265,7 @@ export default function TrainingTrackerPrototype() {
             <Card className="rounded-[30px] border border-white/60 bg-white/88 shadow-[0_18px_60px_rgba(15,23,42,0.10)] backdrop-blur">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg text-slate-900">
-                  <Settings2 className="h-5 w-5" />
-                  Вес по типам упражнений
+                  <Settings2 className="h-5 w-5" /> Вес по типам упражнений
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -1431,32 +1287,18 @@ export default function TrainingTrackerPrototype() {
                     {selectedExercise.sets.map((s, idx) => {
                       const key = `${selectedExercise.id}::${idx}`;
                       const firstRelevantIndex = flatCourse.findIndex(
-                        (item) =>
-                          item.exerciseId === selectedExercise.id &&
-                          item.setIndex === idx
+                        (item) => item.exerciseId === selectedExercise.id && item.setIndex === idx
                       );
                       const effective =
                         firstRelevantIndex >= 0
-                          ? getEffectiveWeight(
-                              flatCourse,
-                              firstRelevantIndex,
-                              weightRules,
-                              manualSetWeights
-                            )
+                          ? getEffectiveWeight(flatCourse, firstRelevantIndex, weightRules, manualSetWeights)
                           : s.weight;
-
                       return (
-                        <div
-                          key={key}
-                          className="rounded-[22px] bg-white/78 p-4 ring-1 ring-slate-200/70"
-                        >
+                        <div key={key} className="rounded-[22px] bg-white/78 p-4 ring-1 ring-slate-200/70">
                           <div className="mb-2 flex items-center justify-between gap-3">
                             <div className="font-medium">Подход {idx + 1}</div>
-                            <div className="text-sm text-slate-500">
-                              Базовые повторения: {s.reps}
-                            </div>
+                            <div className="text-sm text-slate-500">Базовые повторения: {s.reps}</div>
                           </div>
-
                           <Input
                             type="number"
                             step="0.5"
@@ -1472,10 +1314,8 @@ export default function TrainingTrackerPrototype() {
                             }}
                             className="rounded-[18px] border-slate-200/80 bg-white"
                           />
-
                           <div className="mt-2 text-xs text-slate-500">
-                            Здесь можно задать новое глобальное стартовое значение для
-                            этого упражнения и номера подхода.
+                            Здесь можно задать новое глобальное стартовое значение для этого упражнения и номера подхода.
                           </div>
                         </div>
                       );
@@ -1490,20 +1330,15 @@ export default function TrainingTrackerPrototype() {
             <Card className="rounded-[30px] border border-white/60 bg-white/88 shadow-[0_18px_60px_rgba(15,23,42,0.10)] backdrop-blur">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg text-slate-900">
-                  <Trophy className="h-5 w-5" />
-                  Ход курса
+                  <Trophy className="h-5 w-5" /> Ход курса
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {workoutGroups.map((week) => (
                   <div key={week.week} className="space-y-2">
                     <div className="font-medium">Неделя {week.week}</div>
-
                     {week.sessions.map((session) => (
-                      <div
-                        key={session.key}
-                        className="rounded-[24px] bg-white/72 p-4 shadow-[0_6px_20px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70"
-                      >
+                      <div key={session.key} className="rounded-[24px] bg-white/72 p-4 shadow-[0_6px_20px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70">
                         <div className="flex items-center justify-between gap-3">
                           <div>
                             <div className="font-medium">{session.title}</div>
@@ -1513,7 +1348,6 @@ export default function TrainingTrackerPrototype() {
                                 : `${session.done} из ${session.total} подходов`}
                             </div>
                           </div>
-
                           <Badge
                             variant={
                               session.status === "done"
@@ -1543,8 +1377,7 @@ export default function TrainingTrackerPrototype() {
                   variant="outline"
                   onClick={resetAll}
                 >
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  Полный сброс прогресса и веса
+                  <RotateCcw className="mr-2 h-4 w-4" /> Полный сброс прогресса и веса
                 </Button>
               </CardContent>
             </Card>
