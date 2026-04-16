@@ -737,7 +737,6 @@ export default function TrainingTrackerPrototype() {
       setSelectedExerciseId(parsed.selectedExerciseId || exerciseCatalog[0]?.id || "");
       setCompactMode(Boolean(parsed.compactMode));
       setHistory(parsed.history || []);
-      setOverrideStepKey(parsed.overrideStepKey || null);
       setActiveTab((parsed.activeTab as TabKey) || "now");
     } catch (e) {
       console.error(e);
@@ -756,10 +755,9 @@ export default function TrainingTrackerPrototype() {
         selectedExerciseId,
         compactMode,
         history,
-        overrideStepKey,
       })
     );
-  }, [activeTab, doneKeys, currentIndex, weightRules, manualSetWeights, selectedExerciseId, compactMode, history, overrideStepKey]);
+  }, [activeTab, doneKeys, currentIndex, weightRules, manualSetWeights, selectedExerciseId, compactMode, history]);
 
   const doneSet = useMemo(() => new Set(doneKeys), [doneKeys]);
   const actualCurrentIndex = useMemo(
@@ -773,6 +771,7 @@ export default function TrainingTrackerPrototype() {
     if (doneSet.has(overrideStepKey)) return -1;
     return idx;
   }, [flatCourse, overrideStepKey, doneSet]);
+  const linearCurrent = flatCourse[actualCurrentIndex] || null;
   const displayIndex = overrideIndex >= 0 ? overrideIndex : actualCurrentIndex;
   const current = flatCourse[displayIndex] || null;
 
@@ -842,14 +841,28 @@ export default function TrainingTrackerPrototype() {
   const currentSessionProgress = totalInCurrentSession
     ? Math.round((doneInCurrentSession / totalInCurrentSession) * 100)
     : 0;
-  const nextStepsPreview = current
-    ? flatCourse
-        .filter(
-          (x, idx) =>
-            idx > displayIndex && x.week === current.week && x.session === current.session
-        )
-        .slice(0, 3)
-    : [];
+  const nextStepsPreview = useMemo(() => {
+    if (!linearCurrent || !current) return [];
+
+    const pairSteps = flatCourse.filter(
+      (step) =>
+        step.week === linearCurrent.week &&
+        step.session === linearCurrent.session &&
+        step.pair === linearCurrent.pair &&
+        step.exerciseId !== current.exerciseId
+    );
+
+    const firstPendingByExercise = new Map<string, FlatStep>();
+
+    for (const step of pairSteps) {
+      if (doneSet.has(step.key)) continue;
+      if (!firstPendingByExercise.has(step.exerciseId)) {
+        firstPendingByExercise.set(step.exerciseId, step);
+      }
+    }
+
+    return Array.from(firstPendingByExercise.values());
+  }, [flatCourse, linearCurrent, current, doneSet]);
 
   function markCurrentDone() {
     if (!current || doneSet.has(current.key)) return;
@@ -857,17 +870,18 @@ export default function TrainingTrackerPrototype() {
     setDoneKeys(nextDone);
     setHistory((prev) => [...prev, current.key]);
     const nextSet = new Set(nextDone);
-    const nextLinearIndex = getNextAvailableStep(flatCourse, nextSet, actualCurrentIndex + 1);
+    const nextLinearIndex = getNextAvailableStep(flatCourse, nextSet, actualCurrentIndex);
     setOverrideStepKey(null);
     setCurrentIndex(nextLinearIndex);
   }
 
   function chooseExerciseStep(exerciseId: string) {
-    if (!current) return;
+    if (!current || !linearCurrent) return;
     const target = flatCourse.find(
       (step) =>
-        step.week === current.week &&
-        step.session === current.session &&
+        step.week === linearCurrent.week &&
+        step.session === linearCurrent.session &&
+        step.pair === linearCurrent.pair &&
         step.exerciseId === exerciseId &&
         !doneSet.has(step.key)
     );
@@ -1143,14 +1157,16 @@ export default function TrainingTrackerPrototype() {
 
                     {nextStepsPreview.length > 0 ? (
                       <div className="rounded-[24px] bg-white/70 p-4 shadow-[0_6px_20px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70">
-                        <div className="mb-2 text-sm font-medium text-slate-700">Дальше по тренировке</div>
+                        <div className="mb-2 text-sm font-medium text-slate-700">Дальше по текущей паре</div>
                         <div className="space-y-2">
                           {nextStepsPreview.map((step) => {
                             const previewIndex = flatCourse.findIndex((x) => x.key === step.key);
                             return (
-                              <div
+                              <button
                                 key={step.key}
-                                className="rounded-[20px] bg-white px-3 py-2 ring-1 ring-slate-200/60"
+                                type="button"
+                                onClick={() => setOverrideStepKey(step.key)}
+                                className="w-full rounded-[20px] bg-white px-3 py-2 text-left ring-1 ring-slate-200/60 transition hover:bg-slate-50"
                               >
                                 <div className="flex items-center justify-between gap-3">
                                   <div>
@@ -1165,7 +1181,7 @@ export default function TrainingTrackerPrototype() {
                                     )}
                                   </div>
                                 </div>
-                              </div>
+                              </button>
                             );
                           })}
                         </div>
@@ -1198,7 +1214,8 @@ export default function TrainingTrackerPrototype() {
                     const completed = steps.filter((x) => doneSet.has(x.key)).length;
                     const isCurrentExercise = steps.some((x) => x.key === current?.key);
                     const nextAvailableStep = steps.find((x) => !doneSet.has(x.key));
-                    const canChoose = Boolean(nextAvailableStep) && !isCurrentExercise;
+                    const isInActivePair = ex.pair === linearCurrent?.pair;
+                    const canChoose = Boolean(nextAvailableStep) && !isCurrentExercise && isInActivePair;
                     return (
                       <div
                         key={`${current?.week}-${current?.session}-${ex.id}`}
@@ -1218,7 +1235,7 @@ export default function TrainingTrackerPrototype() {
                             onClick={() => chooseExerciseStep(ex.id)}
                             disabled={!canChoose}
                           >
-                            {isCurrentExercise ? "Сейчас" : completed === steps.length ? "Готово" : "Выбрать"}
+                            {isCurrentExercise ? "Сейчас" : completed === steps.length ? "Готово" : isInActivePair ? "Выбрать" : "Позже"}
                           </Button>
                         </div>
                       </div>
