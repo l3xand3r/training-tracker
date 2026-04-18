@@ -881,7 +881,6 @@ export default function TrainingTrackerPrototype() {
       (step) =>
         step.week === linearCurrent.week &&
         step.session === linearCurrent.session &&
-        step.pair === linearCurrent.pair &&
         step.exerciseId === exerciseId &&
         !doneSet.has(step.key)
     );
@@ -1214,8 +1213,7 @@ export default function TrainingTrackerPrototype() {
                     const completed = steps.filter((x) => doneSet.has(x.key)).length;
                     const isCurrentExercise = steps.some((x) => x.key === current?.key);
                     const nextAvailableStep = steps.find((x) => !doneSet.has(x.key));
-                    const isInActivePair = ex.pair === linearCurrent?.pair;
-                    const canChoose = Boolean(nextAvailableStep) && !isCurrentExercise && isInActivePair;
+                    const canChoose = Boolean(nextAvailableStep) && !isCurrentExercise;
                     return (
                       <div
                         key={`${current?.week}-${current?.session}-${ex.id}`}
