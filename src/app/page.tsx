@@ -1233,7 +1233,7 @@ export default function TrainingTrackerPrototype() {
                             onClick={() => chooseExerciseStep(ex.id)}
                             disabled={!canChoose}
                           >
-                            {isCurrentExercise ? "Сейчас" : completed === steps.length ? "Готово" : isInActivePair ? "Выбрать" : "Позже"}
+                            {isCurrentExercise ? "Сейчас" : completed === steps.length ? "Готово" : "Выбрать"}
                           </Button>
                         </div>
                       </div>
