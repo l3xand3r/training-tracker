@@ -702,6 +702,10 @@ function getSessionLabel(week: number, session: number) {
   return `Неделя ${week} · Тренировка ${session}`;
 }
 
+function getWorkoutKey(week: number, session: number) {
+  return `${week}-${session}`;
+}
+
 const TAB_ITEMS: { key: TabKey; label: string; textClass?: string }[] = [
   { key: "now", label: "Сейчас", textClass: "text-[12px] sm:text-sm" },
   { key: "plan", label: "План", textClass: "text-[12px] sm:text-sm" },
@@ -724,6 +728,7 @@ export default function TrainingTrackerPrototype() {
   const [compactMode, setCompactMode] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
   const [overrideStepKey, setOverrideStepKey] = useState<string | null>(null);
+  const [startedWorkoutKeys, setStartedWorkoutKeys] = useState<string[]>([]);
 
   useEffect(() => {
     try {
@@ -737,11 +742,25 @@ export default function TrainingTrackerPrototype() {
       setSelectedExerciseId(parsed.selectedExerciseId || exerciseCatalog[0]?.id || "");
       setCompactMode(Boolean(parsed.compactMode));
       setHistory(parsed.history || []);
+      setOverrideStepKey(null);
       setActiveTab((parsed.activeTab as TabKey) || "now");
+
+      const firstWorkout =
+        flatCourse.length > 0
+          ? getWorkoutKey(flatCourse[0].week, flatCourse[0].session)
+          : null;
+
+      setStartedWorkoutKeys(
+        parsed.startedWorkoutKeys?.length
+          ? parsed.startedWorkoutKeys
+          : firstWorkout
+          ? [firstWorkout]
+          : []
+      );
     } catch (e) {
       console.error(e);
     }
-  }, [exerciseCatalog]);
+  }, [exerciseCatalog, flatCourse]);
 
   useEffect(() => {
     localStorage.setItem(
@@ -755,15 +774,31 @@ export default function TrainingTrackerPrototype() {
         selectedExerciseId,
         compactMode,
         history,
+        startedWorkoutKeys,
       })
     );
-  }, [activeTab, doneKeys, currentIndex, weightRules, manualSetWeights, selectedExerciseId, compactMode, history]);
+  }, [activeTab, doneKeys, currentIndex, weightRules, manualSetWeights, selectedExerciseId, compactMode, history, startedWorkoutKeys]);
 
   const doneSet = useMemo(() => new Set(doneKeys), [doneKeys]);
-  const actualCurrentIndex = useMemo(
-    () => getNextAvailableStep(flatCourse, doneSet, currentIndex),
-    [flatCourse, doneSet, currentIndex]
-  );
+  const actualCurrentIndex = useMemo(() => {
+    for (let i = currentIndex; i < flatCourse.length; i += 1) {
+      const step = flatCourse[i];
+      const workoutKey = getWorkoutKey(step.week, step.session);
+      if (!doneSet.has(step.key) && startedWorkoutKeys.includes(workoutKey)) {
+        return i;
+      }
+    }
+
+    for (let i = 0; i < currentIndex; i += 1) {
+      const step = flatCourse[i];
+      const workoutKey = getWorkoutKey(step.week, step.session);
+      if (!doneSet.has(step.key) && startedWorkoutKeys.includes(workoutKey)) {
+        return i;
+      }
+    }
+
+    return flatCourse.length;
+  }, [flatCourse, doneSet, currentIndex, startedWorkoutKeys]);
   const overrideIndex = useMemo(() => {
     if (!overrideStepKey) return -1;
     const idx = flatCourse.findIndex((x) => x.key === overrideStepKey);
@@ -771,7 +806,6 @@ export default function TrainingTrackerPrototype() {
     if (doneSet.has(overrideStepKey)) return -1;
     return idx;
   }, [flatCourse, overrideStepKey, doneSet]);
-  const linearCurrent = flatCourse[actualCurrentIndex] || null;
   const displayIndex = overrideIndex >= 0 ? overrideIndex : actualCurrentIndex;
   const current = flatCourse[displayIndex] || null;
 
@@ -841,46 +875,86 @@ export default function TrainingTrackerPrototype() {
   const currentSessionProgress = totalInCurrentSession
     ? Math.round((doneInCurrentSession / totalInCurrentSession) * 100)
     : 0;
-  const nextStepsPreview = useMemo(() => {
-    if (!linearCurrent || !current) return [];
 
-    const pairSteps = flatCourse.filter(
-      (step) =>
-        step.week === linearCurrent.week &&
-        step.session === linearCurrent.session &&
-        step.pair === linearCurrent.pair &&
-        step.exerciseId !== current.exerciseId
-    );
-
-    const firstPendingByExercise = new Map<string, FlatStep>();
-
-    for (const step of pairSteps) {
+  const nextLockedWorkout = useMemo(() => {
+    for (const step of flatCourse) {
       if (doneSet.has(step.key)) continue;
-      if (!firstPendingByExercise.has(step.exerciseId)) {
-        firstPendingByExercise.set(step.exerciseId, step);
+
+      const workoutKey = getWorkoutKey(step.week, step.session);
+      if (!startedWorkoutKeys.includes(workoutKey)) {
+        return {
+          key: workoutKey,
+          week: step.week,
+          session: step.session,
+          title: step.sessionTitle,
+        };
       }
     }
 
-    return Array.from(firstPendingByExercise.values());
-  }, [flatCourse, linearCurrent, current, doneSet]);
+    return null;
+  }, [flatCourse, doneSet, startedWorkoutKeys]);
+
+  const nextStepsPreview = current
+    ? flatCourse
+        .filter(
+          (x, idx) =>
+            idx > displayIndex && x.week === current.week && x.session === current.session
+        )
+        .slice(0, 3)
+    : [];
+
+  function startNextWorkout() {
+    if (!nextLockedWorkout) return;
+
+    setStartedWorkoutKeys((prev) =>
+      prev.includes(nextLockedWorkout.key)
+        ? prev
+        : [...prev, nextLockedWorkout.key]
+    );
+
+    const nextIndex = flatCourse.findIndex(
+      (step) =>
+        step.week === nextLockedWorkout.week &&
+        step.session === nextLockedWorkout.session &&
+        !doneSet.has(step.key)
+    );
+
+    if (nextIndex >= 0) {
+      setCurrentIndex(nextIndex);
+      setOverrideStepKey(null);
+    }
+  }
 
   function markCurrentDone() {
     if (!current || doneSet.has(current.key)) return;
+
     const nextDone = [...doneKeys, current.key];
     setDoneKeys(nextDone);
     setHistory((prev) => [...prev, current.key]);
-    const nextSet = new Set(nextDone);
-    const nextLinearIndex = getNextAvailableStep(flatCourse, nextSet, actualCurrentIndex);
     setOverrideStepKey(null);
-    setCurrentIndex(nextLinearIndex);
+
+    const nextSet = new Set(nextDone);
+    let nextIndex = flatCourse.length;
+
+    for (let i = 0; i < flatCourse.length; i += 1) {
+      const step = flatCourse[i];
+      const workoutKey = getWorkoutKey(step.week, step.session);
+
+      if (!nextSet.has(step.key) && startedWorkoutKeys.includes(workoutKey)) {
+        nextIndex = i;
+        break;
+      }
+    }
+
+    setCurrentIndex(nextIndex);
   }
 
   function chooseExerciseStep(exerciseId: string) {
-    if (!current || !linearCurrent) return;
+    if (!current) return;
     const target = flatCourse.find(
       (step) =>
-        step.week === linearCurrent.week &&
-        step.session === linearCurrent.session &&
+        step.week === current.week &&
+        step.session === current.session &&
         step.exerciseId === exerciseId &&
         !doneSet.has(step.key)
     );
@@ -931,6 +1005,11 @@ export default function TrainingTrackerPrototype() {
     setManualSetWeights({});
     setHistory([]);
     setOverrideStepKey(null);
+    const firstWorkout =
+      flatCourse.length > 0
+        ? getWorkoutKey(flatCourse[0].week, flatCourse[0].session)
+        : null;
+    setStartedWorkoutKeys(firstWorkout ? [firstWorkout] : []);
   }
 
   function moveToAdjacentStep(direction: number) {
@@ -1036,10 +1115,12 @@ export default function TrainingTrackerPrototype() {
               <CardHeader className={compactMode ? "pb-1" : "pb-2"}>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Dumbbell className="h-5 w-5" />
-                  {current ? current.exerciseName : "Курс завершён"}
+                  {current ? current.exerciseName : nextLockedWorkout ? "Тренировка завершена" : "Курс завершён"}
                 </CardTitle>
                 {current ? (
                   <div className="text-sm text-slate-500">{getSessionLabel(current.week, current.session)} · {current.pair}</div>
+                ) : nextLockedWorkout ? (
+                  <div className="text-sm text-slate-500">Текущая тренировка завершена. Следующая не начнётся автоматически.</div>
                 ) : (
                   <div className="text-sm text-slate-500">Все запланированные подходы отмечены как выполненные</div>
                 )}
@@ -1156,16 +1237,14 @@ export default function TrainingTrackerPrototype() {
 
                     {nextStepsPreview.length > 0 ? (
                       <div className="rounded-[24px] bg-white/70 p-4 shadow-[0_6px_20px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70">
-                        <div className="mb-2 text-sm font-medium text-slate-700">Дальше по текущей паре</div>
+                        <div className="mb-2 text-sm font-medium text-slate-700">Дальше по тренировке</div>
                         <div className="space-y-2">
                           {nextStepsPreview.map((step) => {
                             const previewIndex = flatCourse.findIndex((x) => x.key === step.key);
                             return (
-                              <button
+                              <div
                                 key={step.key}
-                                type="button"
-                                onClick={() => setOverrideStepKey(step.key)}
-                                className="w-full rounded-[20px] bg-white px-3 py-2 text-left ring-1 ring-slate-200/60 transition hover:bg-slate-50"
+                                className="rounded-[20px] bg-white px-3 py-2 ring-1 ring-slate-200/60"
                               >
                                 <div className="flex items-center justify-between gap-3">
                                   <div>
@@ -1180,7 +1259,7 @@ export default function TrainingTrackerPrototype() {
                                     )}
                                   </div>
                                 </div>
-                              </button>
+                              </div>
                             );
                           })}
                         </div>
@@ -1189,12 +1268,31 @@ export default function TrainingTrackerPrototype() {
                   </>
                 ) : (
                   <div className="space-y-4">
-                    <div className="rounded-[22px] bg-gradient-to-r from-emerald-50 to-teal-50 p-4 text-sm text-emerald-700 ring-1 ring-emerald-200/60">
-                      Курс полностью завершён. Прогресс и изменения веса сохранены локально на устройстве.
-                    </div>
-                    <Button className="w-full rounded-2xl" onClick={resetAll}>
-                      <RotateCcw className="mr-2 h-4 w-4" /> Сбросить и начать заново
-                    </Button>
+                    {nextLockedWorkout ? (
+                      <>
+                        <div className="rounded-[22px] bg-emerald-50 p-4 text-sm text-emerald-800 ring-1 ring-emerald-200/70">
+                          <div className="font-medium text-emerald-900">Текущая тренировка завершена</div>
+                          <div className="mt-1">
+                            Следующая тренировка не начнётся автоматически.
+                          </div>
+                        </div>
+                        <Button
+                          className="w-full rounded-[20px] bg-slate-900 py-3 text-white shadow-sm hover:bg-slate-800"
+                          onClick={startNextWorkout}
+                        >
+                          Начать следующую тренировку
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="rounded-[22px] bg-gradient-to-r from-emerald-50 to-teal-50 p-4 text-sm text-emerald-700 ring-1 ring-emerald-200/60">
+                          Курс полностью завершён. Прогресс и изменения веса сохранены локально на устройстве.
+                        </div>
+                        <Button className="w-full rounded-2xl" onClick={resetAll}>
+                          <RotateCcw className="mr-2 h-4 w-4" /> Сбросить и начать заново
+                        </Button>
+                      </>
+                    )}
                   </div>
                 )}
               </CardContent>
