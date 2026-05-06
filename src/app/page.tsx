@@ -728,7 +728,7 @@ export default function TrainingTrackerPrototype() {
   const [compactMode, setCompactMode] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
   const [overrideStepKey, setOverrideStepKey] = useState<string | null>(null);
-  const [startedWorkoutKeys, setStartedWorkoutKeys] = useState<string[]>([]);
+  const [reviewWorkoutKey, setReviewWorkoutKey] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -742,25 +742,13 @@ export default function TrainingTrackerPrototype() {
       setSelectedExerciseId(parsed.selectedExerciseId || exerciseCatalog[0]?.id || "");
       setCompactMode(Boolean(parsed.compactMode));
       setHistory(parsed.history || []);
-      setOverrideStepKey(null);
+      setOverrideStepKey(parsed.overrideStepKey || null);
+      setReviewWorkoutKey(parsed.reviewWorkoutKey || null);
       setActiveTab((parsed.activeTab as TabKey) || "now");
-
-      const firstWorkout =
-        flatCourse.length > 0
-          ? getWorkoutKey(flatCourse[0].week, flatCourse[0].session)
-          : null;
-
-      setStartedWorkoutKeys(
-        parsed.startedWorkoutKeys?.length
-          ? parsed.startedWorkoutKeys
-          : firstWorkout
-          ? [firstWorkout]
-          : []
-      );
     } catch (e) {
       console.error(e);
     }
-  }, [exerciseCatalog, flatCourse]);
+  }, [exerciseCatalog]);
 
   useEffect(() => {
     localStorage.setItem(
@@ -774,31 +762,17 @@ export default function TrainingTrackerPrototype() {
         selectedExerciseId,
         compactMode,
         history,
-        startedWorkoutKeys,
+        overrideStepKey,
+        reviewWorkoutKey,
       })
     );
-  }, [activeTab, doneKeys, currentIndex, weightRules, manualSetWeights, selectedExerciseId, compactMode, history, startedWorkoutKeys]);
+  }, [activeTab, doneKeys, currentIndex, weightRules, manualSetWeights, selectedExerciseId, compactMode, history, overrideStepKey, reviewWorkoutKey]);
 
   const doneSet = useMemo(() => new Set(doneKeys), [doneKeys]);
-  const actualCurrentIndex = useMemo(() => {
-    for (let i = currentIndex; i < flatCourse.length; i += 1) {
-      const step = flatCourse[i];
-      const workoutKey = getWorkoutKey(step.week, step.session);
-      if (!doneSet.has(step.key) && startedWorkoutKeys.includes(workoutKey)) {
-        return i;
-      }
-    }
-
-    for (let i = 0; i < currentIndex; i += 1) {
-      const step = flatCourse[i];
-      const workoutKey = getWorkoutKey(step.week, step.session);
-      if (!doneSet.has(step.key) && startedWorkoutKeys.includes(workoutKey)) {
-        return i;
-      }
-    }
-
-    return flatCourse.length;
-  }, [flatCourse, doneSet, currentIndex, startedWorkoutKeys]);
+  const actualCurrentIndex = useMemo(
+    () => getNextAvailableStep(flatCourse, doneSet, currentIndex),
+    [flatCourse, doneSet, currentIndex]
+  );
   const overrideIndex = useMemo(() => {
     if (!overrideStepKey) return -1;
     const idx = flatCourse.findIndex((x) => x.key === overrideStepKey);
@@ -808,6 +782,23 @@ export default function TrainingTrackerPrototype() {
   }, [flatCourse, overrideStepKey, doneSet]);
   const displayIndex = overrideIndex >= 0 ? overrideIndex : actualCurrentIndex;
   const current = flatCourse[displayIndex] || null;
+
+  const reviewWorkout = useMemo(() => {
+    if (!reviewWorkoutKey) return null;
+    const [weekStr, sessionStr] = reviewWorkoutKey.split("-");
+    const week = Number(weekStr);
+    const session = Number(sessionStr);
+    if (!week || !session) return null;
+    const sessionData = COURSE.find((w) => w.week === week)?.sessions.find((s) => s.number === session);
+    if (!sessionData) return null;
+    return {
+      key: reviewWorkoutKey,
+      week,
+      session,
+      title: sessionData.title,
+      sessionData,
+    };
+  }, [reviewWorkoutKey]);
 
   useEffect(() => {
     if (actualCurrentIndex !== currentIndex && overrideIndex < 0) setCurrentIndex(actualCurrentIndex);
@@ -859,42 +850,29 @@ export default function TrainingTrackerPrototype() {
     }),
   }));
 
-  const groupedExercises = current
-    ? COURSE.find((w) => w.week === current.week)?.sessions.find((s) => s.number === current.session)
+  const sessionView = reviewWorkout
+    ? { week: reviewWorkout.week, session: reviewWorkout.session, title: reviewWorkout.title }
+    : current
+    ? { week: current.week, session: current.session, title: current.sessionTitle }
+    : null;
+
+  const groupedExercises = sessionView
+    ? COURSE.find((w) => w.week === sessionView.week)?.sessions.find((s) => s.number === sessionView.session)
         ?.exercises || []
     : [];
 
-  const doneInCurrentSession = current
+  const doneInCurrentSession = sessionView
     ? flatCourse.filter(
-        (x) => x.week === current.week && x.session === current.session && doneSet.has(x.key)
+        (x) => x.week === sessionView.week && x.session === sessionView.session && doneSet.has(x.key)
       ).length
     : 0;
-  const totalInCurrentSession = current
-    ? flatCourse.filter((x) => x.week === current.week && x.session === current.session).length
+  const totalInCurrentSession = sessionView
+    ? flatCourse.filter((x) => x.week === sessionView.week && x.session === sessionView.session).length
     : 0;
   const currentSessionProgress = totalInCurrentSession
     ? Math.round((doneInCurrentSession / totalInCurrentSession) * 100)
     : 0;
-
-  const nextLockedWorkout = useMemo(() => {
-    for (const step of flatCourse) {
-      if (doneSet.has(step.key)) continue;
-
-      const workoutKey = getWorkoutKey(step.week, step.session);
-      if (!startedWorkoutKeys.includes(workoutKey)) {
-        return {
-          key: workoutKey,
-          week: step.week,
-          session: step.session,
-          title: step.sessionTitle,
-        };
-      }
-    }
-
-    return null;
-  }, [flatCourse, doneSet, startedWorkoutKeys]);
-
-  const nextStepsPreview = current
+  const nextStepsPreview = !reviewWorkout && current
     ? flatCourse
         .filter(
           (x, idx) =>
@@ -903,50 +881,15 @@ export default function TrainingTrackerPrototype() {
         .slice(0, 3)
     : [];
 
-  function startNextWorkout() {
-    if (!nextLockedWorkout) return;
-
-    setStartedWorkoutKeys((prev) =>
-      prev.includes(nextLockedWorkout.key)
-        ? prev
-        : [...prev, nextLockedWorkout.key]
-    );
-
-    const nextIndex = flatCourse.findIndex(
-      (step) =>
-        step.week === nextLockedWorkout.week &&
-        step.session === nextLockedWorkout.session &&
-        !doneSet.has(step.key)
-    );
-
-    if (nextIndex >= 0) {
-      setCurrentIndex(nextIndex);
-      setOverrideStepKey(null);
-    }
-  }
-
   function markCurrentDone() {
     if (!current || doneSet.has(current.key)) return;
-
     const nextDone = [...doneKeys, current.key];
     setDoneKeys(nextDone);
     setHistory((prev) => [...prev, current.key]);
-    setOverrideStepKey(null);
-
     const nextSet = new Set(nextDone);
-    let nextIndex = flatCourse.length;
-
-    for (let i = 0; i < flatCourse.length; i += 1) {
-      const step = flatCourse[i];
-      const workoutKey = getWorkoutKey(step.week, step.session);
-
-      if (!nextSet.has(step.key) && startedWorkoutKeys.includes(workoutKey)) {
-        nextIndex = i;
-        break;
-      }
-    }
-
-    setCurrentIndex(nextIndex);
+    const nextLinearIndex = getNextAvailableStep(flatCourse, nextSet, actualCurrentIndex + 1);
+    setOverrideStepKey(null);
+    setCurrentIndex(nextLinearIndex);
   }
 
   function chooseExerciseStep(exerciseId: string) {
@@ -995,7 +938,20 @@ export default function TrainingTrackerPrototype() {
 
   function jumpToStep(stepKey: string) {
     const idx = flatCourse.findIndex((x) => x.key === stepKey);
-    if (idx >= 0) setCurrentIndex(idx);
+    if (idx >= 0) {
+      setReviewWorkoutKey(null);
+      setCurrentIndex(idx);
+    }
+  }
+
+  function openWorkout(week: number, session: number) {
+    setReviewWorkoutKey(getWorkoutKey(week, session));
+    setOverrideStepKey(null);
+    setActiveTab("now");
+  }
+
+  function closeWorkoutReview() {
+    setReviewWorkoutKey(null);
   }
 
   function resetAll() {
@@ -1005,11 +961,7 @@ export default function TrainingTrackerPrototype() {
     setManualSetWeights({});
     setHistory([]);
     setOverrideStepKey(null);
-    const firstWorkout =
-      flatCourse.length > 0
-        ? getWorkoutKey(flatCourse[0].week, flatCourse[0].session)
-        : null;
-    setStartedWorkoutKeys(firstWorkout ? [firstWorkout] : []);
+    setReviewWorkoutKey(null);
   }
 
   function moveToAdjacentStep(direction: number) {
@@ -1115,19 +1067,53 @@ export default function TrainingTrackerPrototype() {
               <CardHeader className={compactMode ? "pb-1" : "pb-2"}>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Dumbbell className="h-5 w-5" />
-                  {current ? current.exerciseName : nextLockedWorkout ? "Тренировка завершена" : "Курс завершён"}
+                  {reviewWorkout ? reviewWorkout.title : current ? current.exerciseName : "Курс завершён"}
                 </CardTitle>
-                {current ? (
+                {reviewWorkout ? (
+                  <div className="text-sm text-slate-500">
+                    {getSessionLabel(reviewWorkout.week, reviewWorkout.session)} · Просмотр завершённой тренировки
+                  </div>
+                ) : current ? (
                   <div className="text-sm text-slate-500">{getSessionLabel(current.week, current.session)} · {current.pair}</div>
-                ) : nextLockedWorkout ? (
-                  <div className="text-sm text-slate-500">Текущая тренировка завершена. Следующая не начнётся автоматически.</div>
                 ) : (
                   <div className="text-sm text-slate-500">Все запланированные подходы отмечены как выполненные</div>
                 )}
               </CardHeader>
 
               <CardContent className="space-y-4">
-                {current ? (
+                {reviewWorkout ? (
+                  <>
+                    <div className="rounded-[22px] bg-sky-50 p-4 ring-1 ring-sky-200/70">
+                      <div className="text-sm font-medium text-sky-900">Режим просмотра завершённой тренировки</div>
+                      <div className="mt-1 text-xs text-sky-800">
+                        Здесь можно посмотреть упражнения и прогресс завершённой тренировки. Новые подходы не отмечаются.
+                      </div>
+                    </div>
+
+                    <div className="rounded-[26px] bg-[linear-gradient(135deg,#0f172a_0%,#334155_100%)] p-4 text-white shadow-[0_14px_34px_rgba(15,23,42,0.22)]">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-xs text-slate-200">Прогресс выбранной тренировки</div>
+                          <div className="mt-1 text-lg font-semibold">
+                            {doneInCurrentSession}/{totalInCurrentSession} подходов
+                          </div>
+                        </div>
+                        <Badge className="rounded-full bg-white/15 text-white">{currentSessionProgress}%</Badge>
+                      </div>
+                      <div className="mt-3">
+                        <Progress value={currentSessionProgress} className="h-2 bg-white/20" />
+                      </div>
+                    </div>
+
+                    <Button
+                      className="w-full rounded-[20px] border border-slate-200/80 bg-white/85 py-3 text-slate-900 shadow-sm hover:bg-white"
+                      variant="outline"
+                      onClick={closeWorkoutReview}
+                    >
+                      Вернуться к текущей тренировке
+                    </Button>
+                  </>
+                ) : current ? (
                   <>
                     {current.note ? (
                       <div className="rounded-[22px] bg-white/82 p-4 ring-1 ring-slate-200/80">
@@ -1268,31 +1254,12 @@ export default function TrainingTrackerPrototype() {
                   </>
                 ) : (
                   <div className="space-y-4">
-                    {nextLockedWorkout ? (
-                      <>
-                        <div className="rounded-[22px] bg-emerald-50 p-4 text-sm text-emerald-800 ring-1 ring-emerald-200/70">
-                          <div className="font-medium text-emerald-900">Текущая тренировка завершена</div>
-                          <div className="mt-1">
-                            Следующая тренировка не начнётся автоматически.
-                          </div>
-                        </div>
-                        <Button
-                          className="w-full rounded-[20px] bg-slate-900 py-3 text-white shadow-sm hover:bg-slate-800"
-                          onClick={startNextWorkout}
-                        >
-                          Начать следующую тренировку
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <div className="rounded-[22px] bg-gradient-to-r from-emerald-50 to-teal-50 p-4 text-sm text-emerald-700 ring-1 ring-emerald-200/60">
-                          Курс полностью завершён. Прогресс и изменения веса сохранены локально на устройстве.
-                        </div>
-                        <Button className="w-full rounded-2xl" onClick={resetAll}>
-                          <RotateCcw className="mr-2 h-4 w-4" /> Сбросить и начать заново
-                        </Button>
-                      </>
-                    )}
+                    <div className="rounded-[22px] bg-gradient-to-r from-emerald-50 to-teal-50 p-4 text-sm text-emerald-700 ring-1 ring-emerald-200/60">
+                      Курс полностью завершён. Прогресс и изменения веса сохранены локально на устройстве.
+                    </div>
+                    <Button className="w-full rounded-2xl" onClick={resetAll}>
+                      <RotateCcw className="mr-2 h-4 w-4" /> Сбросить и начать заново
+                    </Button>
                   </div>
                 )}
               </CardContent>
@@ -1301,12 +1268,14 @@ export default function TrainingTrackerPrototype() {
             {groupedExercises.length > 0 ? (
               <Card className="rounded-[30px] border border-white/60 bg-white/88 shadow-[0_18px_60px_rgba(15,23,42,0.10)] backdrop-blur">
                 <CardHeader>
-                  <CardTitle className="text-lg text-slate-900">Текущая тренировка</CardTitle>
+                  <CardTitle className="text-lg text-slate-900">
+                    {reviewWorkout ? "Выбранная тренировка" : "Текущая тренировка"}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {groupedExercises.map((ex) => {
                     const steps = flatCourse.filter(
-                      (x) => x.week === current?.week && x.session === current?.session && x.exerciseId === ex.id
+                      (x) => x.week === sessionView?.week && x.session === sessionView?.session && x.exerciseId === ex.id
                     );
                     const completed = steps.filter((x) => doneSet.has(x.key)).length;
                     const isCurrentExercise = steps.some((x) => x.key === current?.key);
@@ -1324,15 +1293,24 @@ export default function TrainingTrackerPrototype() {
                               {completed} из {steps.length} подходов
                             </div>
                           </div>
-                          <Button
-                            size="sm"
-                            variant={isCurrentExercise ? "default" : completed === steps.length ? "secondary" : "outline"}
-                            className="rounded-full px-4"
-                            onClick={() => chooseExerciseStep(ex.id)}
-                            disabled={!canChoose}
-                          >
-                            {isCurrentExercise ? "Сейчас" : completed === steps.length ? "Готово" : "Выбрать"}
-                          </Button>
+                          {reviewWorkout ? (
+                            <Badge
+                              variant={completed === steps.length ? "secondary" : "outline"}
+                              className="rounded-full"
+                            >
+                              {completed === steps.length ? "Готово" : "Не завершено"}
+                            </Badge>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant={isCurrentExercise ? "default" : completed === steps.length ? "secondary" : "outline"}
+                              className="rounded-full px-4"
+                              onClick={() => chooseExerciseStep(ex.id)}
+                              disabled={!canChoose}
+                            >
+                              {isCurrentExercise ? "Сейчас" : completed === steps.length ? "Готово" : "Выбрать"}
+                            </Button>
+                          )}
                         </div>
                       </div>
                     );
@@ -1511,7 +1489,12 @@ export default function TrainingTrackerPrototype() {
                   <div key={week.week} className="space-y-2">
                     <div className="font-medium">Неделя {week.week}</div>
                     {week.sessions.map((session) => (
-                      <div key={session.key} className="rounded-[24px] bg-white/72 p-4 shadow-[0_6px_20px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70">
+                      <button
+                        key={session.key}
+                        type="button"
+                        onClick={() => openWorkout(session.week, session.session)}
+                        className="w-full rounded-[24px] bg-white/72 p-4 text-left shadow-[0_6px_20px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70 transition hover:bg-white"
+                      >
                         <div className="flex items-center justify-between gap-3">
                           <div>
                             <div className="font-medium">{session.title}</div>
@@ -1540,7 +1523,7 @@ export default function TrainingTrackerPrototype() {
                               : "Дальше"}
                           </Badge>
                         </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 ))}
