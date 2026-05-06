@@ -783,23 +783,6 @@ export default function TrainingTrackerPrototype() {
   const displayIndex = overrideIndex >= 0 ? overrideIndex : actualCurrentIndex;
   const current = flatCourse[displayIndex] || null;
 
-  const reviewWorkout = useMemo(() => {
-    if (!reviewWorkoutKey) return null;
-    const [weekStr, sessionStr] = reviewWorkoutKey.split("-");
-    const week = Number(weekStr);
-    const session = Number(sessionStr);
-    if (!week || !session) return null;
-    const sessionData = COURSE.find((w) => w.week === week)?.sessions.find((s) => s.number === session);
-    if (!sessionData) return null;
-    return {
-      key: reviewWorkoutKey,
-      week,
-      session,
-      title: sessionData.title,
-      sessionData,
-    };
-  }, [reviewWorkoutKey]);
-
   useEffect(() => {
     if (actualCurrentIndex !== currentIndex && overrideIndex < 0) setCurrentIndex(actualCurrentIndex);
   }, [actualCurrentIndex, currentIndex, overrideIndex]);
@@ -850,29 +833,23 @@ export default function TrainingTrackerPrototype() {
     }),
   }));
 
-  const sessionView = reviewWorkout
-    ? { week: reviewWorkout.week, session: reviewWorkout.session, title: reviewWorkout.title }
-    : current
-    ? { week: current.week, session: current.session, title: current.sessionTitle }
-    : null;
-
-  const groupedExercises = sessionView
-    ? COURSE.find((w) => w.week === sessionView.week)?.sessions.find((s) => s.number === sessionView.session)
+  const groupedExercises = current
+    ? COURSE.find((w) => w.week === current.week)?.sessions.find((s) => s.number === current.session)
         ?.exercises || []
     : [];
 
-  const doneInCurrentSession = sessionView
+  const doneInCurrentSession = current
     ? flatCourse.filter(
-        (x) => x.week === sessionView.week && x.session === sessionView.session && doneSet.has(x.key)
+        (x) => x.week === current.week && x.session === current.session && doneSet.has(x.key)
       ).length
     : 0;
-  const totalInCurrentSession = sessionView
-    ? flatCourse.filter((x) => x.week === sessionView.week && x.session === sessionView.session).length
+  const totalInCurrentSession = current
+    ? flatCourse.filter((x) => x.week === current.week && x.session === current.session).length
     : 0;
   const currentSessionProgress = totalInCurrentSession
     ? Math.round((doneInCurrentSession / totalInCurrentSession) * 100)
     : 0;
-  const nextStepsPreview = !reviewWorkout && current
+  const nextStepsPreview = current
     ? flatCourse
         .filter(
           (x, idx) =>
@@ -938,20 +915,7 @@ export default function TrainingTrackerPrototype() {
 
   function jumpToStep(stepKey: string) {
     const idx = flatCourse.findIndex((x) => x.key === stepKey);
-    if (idx >= 0) {
-      setReviewWorkoutKey(null);
-      setCurrentIndex(idx);
-    }
-  }
-
-  function openWorkout(week: number, session: number) {
-    setReviewWorkoutKey(getWorkoutKey(week, session));
-    setOverrideStepKey(null);
-    setActiveTab("now");
-  }
-
-  function closeWorkoutReview() {
-    setReviewWorkoutKey(null);
+    if (idx >= 0) setCurrentIndex(idx);
   }
 
   function resetAll() {
@@ -972,6 +936,62 @@ export default function TrainingTrackerPrototype() {
 
   const selectedExercise = exerciseCatalog.find((e) => e.id === selectedExerciseId);
   const isOverrideActive = overrideIndex >= 0;
+
+  const reviewWorkoutMeta = useMemo(() => {
+    if (!reviewWorkoutKey) return null;
+    const [weekStr, sessionStr] = reviewWorkoutKey.split("-");
+    const week = Number(weekStr);
+    const session = Number(sessionStr);
+    const foundSession = COURSE.find((w) => w.week === week)?.sessions.find((s) => s.number === session);
+    return foundSession
+      ? { key: reviewWorkoutKey, week, session, title: foundSession.title }
+      : null;
+  }, [reviewWorkoutKey]);
+
+  const reviewWorkoutSteps = useMemo(() => {
+    if (!reviewWorkoutMeta) return [];
+    return flatCourse.filter(
+      (step) => step.week === reviewWorkoutMeta.week && step.session === reviewWorkoutMeta.session
+    );
+  }, [flatCourse, reviewWorkoutMeta]);
+
+  const reviewWorkoutDone = useMemo(
+    () => reviewWorkoutSteps.filter((step) => doneSet.has(step.key)).length,
+    [reviewWorkoutSteps, doneSet]
+  );
+
+  const reviewWorkoutCompleted =
+    reviewWorkoutSteps.length > 0 && reviewWorkoutDone === reviewWorkoutSteps.length;
+
+  function openWorkoutReview(week: number, session: number) {
+    setReviewWorkoutKey(getWorkoutKey(week, session));
+    setActiveTab("now");
+  }
+
+  function returnToCurrentWorkout() {
+    setReviewWorkoutKey(null);
+  }
+
+  function activateReviewedWorkout() {
+    if (!reviewWorkoutMeta || reviewWorkoutSteps.length === 0) return;
+
+    const reviewKeys = new Set(reviewWorkoutSteps.map((step) => step.key));
+    const nextDoneKeys = reviewWorkoutCompleted
+      ? doneKeys.filter((key) => !reviewKeys.has(key))
+      : doneKeys;
+    const nextHistory = reviewWorkoutCompleted
+      ? history.filter((key) => !reviewKeys.has(key))
+      : history;
+
+    setDoneKeys(nextDoneKeys);
+    setHistory(nextHistory);
+    setOverrideStepKey(null);
+    setReviewWorkoutKey(null);
+    setCurrentIndex(flatCourse.findIndex(
+      (step) => step.week === reviewWorkoutMeta.week && step.session === reviewWorkoutMeta.session
+    ));
+    setActiveTab("now");
+  }
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#fff8f1,_#f8fafc_30%,_#f3f0ff_65%,_#eaf6ff)] p-3 md:p-8">
@@ -1067,11 +1087,11 @@ export default function TrainingTrackerPrototype() {
               <CardHeader className={compactMode ? "pb-1" : "pb-2"}>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Dumbbell className="h-5 w-5" />
-                  {reviewWorkout ? reviewWorkout.title : current ? current.exerciseName : "Курс завершён"}
+                  {reviewWorkoutMeta ? reviewWorkoutMeta.title : current ? current.exerciseName : "Курс завершён"}
                 </CardTitle>
-                {reviewWorkout ? (
+                {reviewWorkoutMeta ? (
                   <div className="text-sm text-slate-500">
-                    {getSessionLabel(reviewWorkout.week, reviewWorkout.session)} · Просмотр завершённой тренировки
+                    {getSessionLabel(reviewWorkoutMeta.week, reviewWorkoutMeta.session)} · Просмотр тренировки
                   </div>
                 ) : current ? (
                   <div className="text-sm text-slate-500">{getSessionLabel(current.week, current.session)} · {current.pair}</div>
@@ -1081,38 +1101,59 @@ export default function TrainingTrackerPrototype() {
               </CardHeader>
 
               <CardContent className="space-y-4">
-                {reviewWorkout ? (
-                  <>
+                {reviewWorkoutMeta ? (
+                  <div className="space-y-4">
                     <div className="rounded-[22px] bg-sky-50 p-4 ring-1 ring-sky-200/70">
-                      <div className="text-sm font-medium text-sky-900">Режим просмотра завершённой тренировки</div>
-                      <div className="mt-1 text-xs text-sky-800">
-                        Здесь можно посмотреть упражнения и прогресс завершённой тренировки. Новые подходы не отмечаются.
+                      <div className="text-sm font-medium text-sky-900">
+                        Режим просмотра тренировки
+                      </div>
+                      <div className="mt-1 text-sm text-sky-800">
+                        Здесь можно открыть завершённую тренировку и сделать её текущей.
                       </div>
                     </div>
 
-                    <div className="rounded-[26px] bg-[linear-gradient(135deg,#0f172a_0%,#334155_100%)] p-4 text-white shadow-[0_14px_34px_rgba(15,23,42,0.22)]">
+                    <div className="rounded-[26px] bg-[linear-gradient(135deg,#0f172a_0%,#334155_100%)] p-4 text-white shadow-[0_14px_34px_rgba(15,23,42,0.18)]">
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <div className="text-xs text-slate-200">Прогресс выбранной тренировки</div>
                           <div className="mt-1 text-lg font-semibold">
-                            {doneInCurrentSession}/{totalInCurrentSession} подходов
+                            {reviewWorkoutDone}/{reviewWorkoutSteps.length} подходов
                           </div>
                         </div>
-                        <Badge className="rounded-full bg-white/15 text-white">{currentSessionProgress}%</Badge>
+                        <Badge className="rounded-full bg-white/15 text-white">
+                          {reviewWorkoutSteps.length
+                            ? Math.round((reviewWorkoutDone / reviewWorkoutSteps.length) * 100)
+                            : 0}%
+                        </Badge>
                       </div>
                       <div className="mt-3">
-                        <Progress value={currentSessionProgress} className="h-2 bg-white/20" />
+                        <Progress
+                          value={
+                            reviewWorkoutSteps.length
+                              ? Math.round((reviewWorkoutDone / reviewWorkoutSteps.length) * 100)
+                              : 0
+                          }
+                          className="h-2 bg-white/20"
+                        />
                       </div>
                     </div>
 
-                    <Button
-                      className="w-full rounded-[20px] border border-slate-200/80 bg-white/85 py-3 text-slate-900 shadow-sm hover:bg-white"
-                      variant="outline"
-                      onClick={closeWorkoutReview}
-                    >
-                      Вернуться к текущей тренировке
-                    </Button>
-                  </>
+                    <div className="grid grid-cols-1 gap-2">
+                      <Button
+                        className="w-full rounded-[20px] bg-slate-900 py-3 text-white shadow-sm hover:bg-slate-800"
+                        onClick={activateReviewedWorkout}
+                      >
+                        {reviewWorkoutCompleted ? "Повторить эту тренировку" : "Сделать текущей тренировкой"}
+                      </Button>
+                      <Button
+                        className="w-full rounded-[20px] border border-slate-200/80 bg-white/85 py-3 text-slate-900 shadow-sm hover:bg-white"
+                        variant="outline"
+                        onClick={returnToCurrentWorkout}
+                      >
+                        Вернуться к текущей тренировке
+                      </Button>
+                    </div>
+                  </div>
                 ) : current ? (
                   <>
                     {current.note ? (
@@ -1268,14 +1309,12 @@ export default function TrainingTrackerPrototype() {
             {groupedExercises.length > 0 ? (
               <Card className="rounded-[30px] border border-white/60 bg-white/88 shadow-[0_18px_60px_rgba(15,23,42,0.10)] backdrop-blur">
                 <CardHeader>
-                  <CardTitle className="text-lg text-slate-900">
-                    {reviewWorkout ? "Выбранная тренировка" : "Текущая тренировка"}
-                  </CardTitle>
+                  <CardTitle className="text-lg text-slate-900">Текущая тренировка</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {groupedExercises.map((ex) => {
                     const steps = flatCourse.filter(
-                      (x) => x.week === sessionView?.week && x.session === sessionView?.session && x.exerciseId === ex.id
+                      (x) => x.week === current?.week && x.session === current?.session && x.exerciseId === ex.id
                     );
                     const completed = steps.filter((x) => doneSet.has(x.key)).length;
                     const isCurrentExercise = steps.some((x) => x.key === current?.key);
@@ -1293,24 +1332,15 @@ export default function TrainingTrackerPrototype() {
                               {completed} из {steps.length} подходов
                             </div>
                           </div>
-                          {reviewWorkout ? (
-                            <Badge
-                              variant={completed === steps.length ? "secondary" : "outline"}
-                              className="rounded-full"
-                            >
-                              {completed === steps.length ? "Готово" : "Не завершено"}
-                            </Badge>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant={isCurrentExercise ? "default" : completed === steps.length ? "secondary" : "outline"}
-                              className="rounded-full px-4"
-                              onClick={() => chooseExerciseStep(ex.id)}
-                              disabled={!canChoose}
-                            >
-                              {isCurrentExercise ? "Сейчас" : completed === steps.length ? "Готово" : "Выбрать"}
-                            </Button>
-                          )}
+                          <Button
+                            size="sm"
+                            variant={isCurrentExercise ? "default" : completed === steps.length ? "secondary" : "outline"}
+                            className="rounded-full px-4"
+                            onClick={() => chooseExerciseStep(ex.id)}
+                            disabled={!canChoose}
+                          >
+                            {isCurrentExercise ? "Сейчас" : completed === steps.length ? "Готово" : "Выбрать"}
+                          </Button>
                         </div>
                       </div>
                     );
@@ -1488,43 +1518,47 @@ export default function TrainingTrackerPrototype() {
                 {workoutGroups.map((week) => (
                   <div key={week.week} className="space-y-2">
                     <div className="font-medium">Неделя {week.week}</div>
-                    {week.sessions.map((session) => (
-                      <button
-                        key={session.key}
-                        type="button"
-                        onClick={() => openWorkout(session.week, session.session)}
-                        className="w-full rounded-[24px] bg-white/72 p-4 text-left shadow-[0_6px_20px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70 transition hover:bg-white"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <div className="font-medium">{session.title}</div>
-                            <div className="mt-1 text-sm text-slate-500">
+                    {week.sessions.map((session) => {
+                      const clickable = session.status === "done" || session.status === "upcoming" || session.status === "current";
+                      return (
+                        <button
+                          key={session.key}
+                          type="button"
+                          disabled={!clickable}
+                          onClick={() => openWorkoutReview(session.week, session.session)}
+                          className="w-full rounded-[24px] bg-white/72 p-4 text-left shadow-[0_6px_20px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70 transition hover:bg-white disabled:cursor-default disabled:hover:bg-white/72"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <div className="font-medium">{session.title}</div>
+                              <div className="mt-1 text-sm text-slate-500">
+                                {session.status === "rest"
+                                  ? "Отдых"
+                                  : `${session.done} из ${session.total} подходов`}
+                              </div>
+                            </div>
+                            <Badge
+                              variant={
+                                session.status === "done"
+                                  ? "secondary"
+                                  : session.status === "current"
+                                  ? "default"
+                                  : "outline"
+                              }
+                              className="rounded-full"
+                            >
                               {session.status === "rest"
                                 ? "Отдых"
-                                : `${session.done} из ${session.total} подходов`}
-                            </div>
-                          </div>
-                          <Badge
-                            variant={
-                              session.status === "done"
-                                ? "secondary"
+                                : session.status === "done"
+                                ? "Открыть"
                                 : session.status === "current"
-                                ? "default"
-                                : "outline"
-                            }
-                            className="rounded-full"
-                          >
-                            {session.status === "rest"
-                              ? "Отдых"
-                              : session.status === "done"
-                              ? "Готово"
-                              : session.status === "current"
-                              ? "Сейчас"
-                              : "Дальше"}
-                          </Badge>
-                        </div>
-                      </button>
-                    ))}
+                                ? "Текущая"
+                                : "Открыть"}
+                            </Badge>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 ))}
 
