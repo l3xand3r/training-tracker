@@ -31,6 +31,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  getAuthorStartWeights,
+  getEffectiveWeight,
+  getEndWeights,
+  getWeightIdentity,
+  type CycleSummary,
+  type WeightIdentity,
+  type WeightRule,
+} from "@/lib/cycle-weights";
 
 const STORAGE_KEY = "training-tracker-v3";
 
@@ -672,28 +681,6 @@ function getNextAvailableStep(flat: FlatStep[], doneSet: Set<string>, preferredI
   return flat.length;
 }
 
-type WeightRule = { fromIndex: number; weight: number | null };
-
-function getEffectiveWeight(
-  flat: FlatStep[],
-  stepIndex: number,
-  globalOverrides: Record<string, WeightRule[]>,
-  directOverrides: Record<string, number | null>
-) {
-  const step = flat[stepIndex];
-  if (!step) return null;
-  if (Object.prototype.hasOwnProperty.call(directOverrides, step.key)) {
-    return directOverrides[step.key];
-  }
-  const ruleKey = `${step.exerciseId}::${step.setIndex}`;
-  const rules = globalOverrides[ruleKey] || [];
-  let weight = step.defaultWeight;
-  rules.forEach((rule) => {
-    if (rule.fromIndex <= stepIndex) weight = rule.weight;
-  });
-  return weight;
-}
-
 function formatWeight(value: number | null | undefined) {
   return value === null || value === undefined ? "—" : `${value} кг`;
 }
@@ -716,6 +703,7 @@ const TAB_ITEMS: { key: TabKey; label: string; textClass?: string }[] = [
 export default function TrainingTrackerPrototype() {
   const flatCourse = useMemo(() => buildFlatCourse(COURSE), []);
   const exerciseCatalog = useMemo(() => getExerciseInstances(COURSE), []);
+  const authorStartWeights = useMemo(() => getAuthorStartWeights(flatCourse), [flatCourse]);
 
   const [activeTab, setActiveTab] = useState<TabKey>("now");
   const [doneKeys, setDoneKeys] = useState<string[]>([]);
@@ -729,14 +717,18 @@ export default function TrainingTrackerPrototype() {
   const [history, setHistory] = useState<string[]>([]);
   const [overrideStepKey, setOverrideStepKey] = useState<string | null>(null);
   const [reviewWorkoutKey, setReviewWorkoutKey] = useState<string | null>(null);
+  const [cycleNumber, setCycleNumber] = useState(1);
+  const [cycleStartWeights, setCycleStartWeights] = useState<Record<WeightIdentity, number | null>>(authorStartWeights);
+  const [cycleHistory, setCycleHistory] = useState<CycleSummary[]>([]);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw);
-      setDoneKeys(parsed.doneKeys || []);
-      setCurrentIndex(parsed.currentIndex || 0);
+      setDoneKeys(Array.isArray(parsed.doneKeys) ? parsed.doneKeys : []);
+      setCurrentIndex(typeof parsed.currentIndex === "number" ? parsed.currentIndex : 0);
       setWeightRules(parsed.weightRules || {});
       setManualSetWeights(parsed.manualSetWeights || {});
       setSelectedExerciseId(parsed.selectedExerciseId || exerciseCatalog[0]?.id || "");
@@ -745,12 +737,19 @@ export default function TrainingTrackerPrototype() {
       setOverrideStepKey(parsed.overrideStepKey || null);
       setReviewWorkoutKey(parsed.reviewWorkoutKey || null);
       setActiveTab((parsed.activeTab as TabKey) || "now");
+      // v3 saves are Cycle 1: retain every existing progress and weight override unchanged.
+      setCycleNumber(typeof parsed.cycleNumber === "number" && parsed.cycleNumber > 0 ? parsed.cycleNumber : 1);
+      setCycleStartWeights(parsed.cycleStartWeights || authorStartWeights);
+      setCycleHistory(Array.isArray(parsed.cycleHistory) ? parsed.cycleHistory : []);
     } catch (e) {
       console.error(e);
+    } finally {
+      setHydrated(true);
     }
-  }, [exerciseCatalog]);
+  }, [authorStartWeights, exerciseCatalog]);
 
   useEffect(() => {
+    if (!hydrated) return;
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
@@ -764,9 +763,12 @@ export default function TrainingTrackerPrototype() {
         history,
         overrideStepKey,
         reviewWorkoutKey,
+        cycleNumber,
+        cycleStartWeights,
+        cycleHistory,
       })
     );
-  }, [activeTab, doneKeys, currentIndex, weightRules, manualSetWeights, selectedExerciseId, compactMode, history, overrideStepKey, reviewWorkoutKey]);
+  }, [activeTab, doneKeys, currentIndex, weightRules, manualSetWeights, selectedExerciseId, compactMode, history, overrideStepKey, reviewWorkoutKey, cycleNumber, cycleStartWeights, cycleHistory, hydrated]);
 
   const doneSet = useMemo(() => new Set(doneKeys), [doneKeys]);
   const actualCurrentIndex = useMemo(
@@ -791,7 +793,7 @@ export default function TrainingTrackerPrototype() {
   const totalCount = flatCourse.length;
   const progress = totalCount ? Math.round((completedCount / totalCount) * 100) : 0;
   const currentWeight = current
-    ? getEffectiveWeight(flatCourse, displayIndex, weightRules, manualSetWeights)
+    ? getEffectiveWeight(flatCourse, displayIndex, weightRules, manualSetWeights, cycleNumber, cycleStartWeights, authorStartWeights)
     : null;
 
   const filteredFlat = flatCourse.filter((item) => {
@@ -899,10 +901,10 @@ export default function TrainingTrackerPrototype() {
 
   function adjustCurrentWeight(delta: number) {
     if (!current) return;
-    const currentVal = getEffectiveWeight(flatCourse, displayIndex, weightRules, manualSetWeights);
+    const currentVal = getEffectiveWeight(flatCourse, displayIndex, weightRules, manualSetWeights, cycleNumber, cycleStartWeights, authorStartWeights);
     if (currentVal === null || currentVal === undefined) return;
     const nextWeight = Math.max(0, Number((currentVal + delta).toFixed(1)));
-    const ruleKey = `${current.exerciseId}::${current.setIndex}`;
+    const ruleKey = getWeightIdentity(current);
     const existing = weightRules[ruleKey] || [];
     const cleaned = existing.filter((r) => r.fromIndex !== displayIndex);
     setWeightRules({
@@ -919,6 +921,7 @@ export default function TrainingTrackerPrototype() {
   }
 
   function resetAll() {
+    setActiveTab("now");
     setDoneKeys([]);
     setCurrentIndex(0);
     setWeightRules({});
@@ -926,6 +929,40 @@ export default function TrainingTrackerPrototype() {
     setHistory([]);
     setOverrideStepKey(null);
     setReviewWorkoutKey(null);
+    setCycleNumber(1);
+    setCycleStartWeights(authorStartWeights);
+    setCycleHistory([]);
+  }
+
+  function startNextCycle() {
+    if (actualCurrentIndex !== flatCourse.length) return;
+    const endWeights = getEndWeights(
+      flatCourse,
+      weightRules,
+      manualSetWeights,
+      cycleNumber,
+      cycleStartWeights,
+      authorStartWeights
+    );
+    setCycleHistory((previous) => [
+      ...previous,
+      {
+        cycleNumber,
+        completedAt: new Date().toISOString(),
+        startWeights: cycleStartWeights,
+        endWeights,
+      },
+    ]);
+    setCycleNumber((previous) => previous + 1);
+    setCycleStartWeights(endWeights);
+    setDoneKeys([]);
+    setCurrentIndex(0);
+    setWeightRules({});
+    setManualSetWeights({});
+    setHistory([]);
+    setOverrideStepKey(null);
+    setReviewWorkoutKey(null);
+    setActiveTab("now");
   }
 
   function moveToAdjacentStep(direction: number) {
@@ -1003,7 +1040,7 @@ export default function TrainingTrackerPrototype() {
                 <div>
                   <div className="flex items-center gap-2 text-sm text-slate-500">
                     <CalendarDays className="h-4 w-4" />
-                    <span>12-недельный курс · iPhone view</span>
+                    <span>12-недельный курс · Цикл {cycleNumber}</span>
                   </div>
                   <h1 className="mt-2 text-[27px] font-semibold tracking-tight text-slate-900">
                     Training Tracker
@@ -1087,7 +1124,7 @@ export default function TrainingTrackerPrototype() {
               <CardHeader className={compactMode ? "pb-1" : "pb-2"}>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Dumbbell className="h-5 w-5" />
-                  {reviewWorkoutMeta ? reviewWorkoutMeta.title : current ? current.exerciseName : "Курс завершён"}
+                  {reviewWorkoutMeta ? reviewWorkoutMeta.title : current ? current.exerciseName : `Цикл ${cycleNumber} завершён`}
                 </CardTitle>
                 {reviewWorkoutMeta ? (
                   <div className="text-sm text-slate-500">
@@ -1282,7 +1319,7 @@ export default function TrainingTrackerPrototype() {
                                   </div>
                                   <div className="text-sm text-slate-500">
                                     {formatWeight(
-                                      getEffectiveWeight(flatCourse, previewIndex, weightRules, manualSetWeights)
+                                      getEffectiveWeight(flatCourse, previewIndex, weightRules, manualSetWeights, cycleNumber, cycleStartWeights, authorStartWeights)
                                     )}
                                   </div>
                                 </div>
@@ -1296,10 +1333,10 @@ export default function TrainingTrackerPrototype() {
                 ) : (
                   <div className="space-y-4">
                     <div className="rounded-[22px] bg-gradient-to-r from-emerald-50 to-teal-50 p-4 text-sm text-emerald-700 ring-1 ring-emerald-200/60">
-                      Курс полностью завершён. Прогресс и изменения веса сохранены локально на устройстве.
+                      Цикл {cycleNumber} полностью завершён. Достигнутые веса станут базой следующего цикла.
                     </div>
-                    <Button className="w-full rounded-2xl" onClick={resetAll}>
-                      <RotateCcw className="mr-2 h-4 w-4" /> Сбросить и начать заново
+                    <Button className="w-full rounded-2xl" onClick={startNextCycle}>
+                      <ChevronRight className="mr-2 h-4 w-4" /> Начать цикл {cycleNumber + 1}
                     </Button>
                   </div>
                 )}
@@ -1413,7 +1450,7 @@ export default function TrainingTrackerPrototype() {
                               <div className="mt-1 text-sm opacity-70">
                                 Подход {item.setIndex + 1} · Повторения {item.reps} · Вес{" "}
                                 {formatWeight(
-                                  getEffectiveWeight(flatCourse, idx, weightRules, manualSetWeights)
+                                  getEffectiveWeight(flatCourse, idx, weightRules, manualSetWeights, cycleNumber, cycleStartWeights, authorStartWeights)
                                 )}
                               </div>
                             </div>
@@ -1470,7 +1507,7 @@ export default function TrainingTrackerPrototype() {
                       );
                       const effective =
                         firstRelevantIndex >= 0
-                          ? getEffectiveWeight(flatCourse, firstRelevantIndex, weightRules, manualSetWeights)
+                          ? getEffectiveWeight(flatCourse, firstRelevantIndex, weightRules, manualSetWeights, cycleNumber, cycleStartWeights, authorStartWeights)
                           : s.weight;
                       return (
                         <div key={key} className="rounded-[22px] bg-white/78 p-4 ring-1 ring-slate-200/70">
