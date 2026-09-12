@@ -35,8 +35,9 @@ import {
   getAuthorStartWeights,
   getEffectiveWeight,
   getEndWeights,
+  getTransitionWeights,
   getWeightIdentity,
-  type CycleSummary,
+  type CycleArchive,
   type WeightIdentity,
   type WeightRule,
 } from "@/lib/cycle-weights";
@@ -719,7 +720,7 @@ export default function TrainingTrackerPrototype() {
   const [reviewWorkoutKey, setReviewWorkoutKey] = useState<string | null>(null);
   const [cycleNumber, setCycleNumber] = useState(1);
   const [cycleStartWeights, setCycleStartWeights] = useState<Record<WeightIdentity, number | null>>(authorStartWeights);
-  const [cycleHistory, setCycleHistory] = useState<CycleSummary[]>([]);
+  const [cycleHistory, setCycleHistory] = useState<CycleArchive[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
@@ -934,32 +935,79 @@ export default function TrainingTrackerPrototype() {
     setCycleHistory([]);
   }
 
-  function startNextCycle() {
-    if (actualCurrentIndex !== flatCourse.length) return;
-    const endWeights = getEndWeights(
-      flatCourse,
+  function archiveCurrentCycle(completed: boolean): CycleArchive {
+    const endWeights = completed
+      ? getEndWeights(flatCourse, weightRules, manualSetWeights, cycleNumber, cycleStartWeights, authorStartWeights)
+      : getTransitionWeights(
+          flatCourse, doneKeys, displayIndex, weightRules, manualSetWeights,
+          cycleNumber, cycleStartWeights, authorStartWeights
+        );
+    return {
+      cycleNumber,
+      completedAt: completed ? new Date().toISOString() : null,
+      startWeights: cycleStartWeights,
+      endWeights,
+      doneKeys,
+      currentIndex,
       weightRules,
       manualSetWeights,
-      cycleNumber,
-      cycleStartWeights,
-      authorStartWeights
-    );
-    setCycleHistory((previous) => [
-      ...previous,
-      {
-        cycleNumber,
-        completedAt: new Date().toISOString(),
-        startWeights: cycleStartWeights,
-        endWeights,
-      },
-    ]);
-    setCycleNumber((previous) => previous + 1);
-    setCycleStartWeights(endWeights);
+      history,
+    };
+  }
+
+  function clearCurrentCycleProgress() {
     setDoneKeys([]);
     setCurrentIndex(0);
     setWeightRules({});
     setManualSetWeights({});
     setHistory([]);
+    setOverrideStepKey(null);
+    setReviewWorkoutKey(null);
+    setActiveTab("now");
+  }
+
+  function startNextCycle() {
+    const archived = archiveCurrentCycle(actualCurrentIndex === flatCourse.length);
+    setCycleHistory((previous) => [
+      ...previous.filter((cycle) => cycle.cycleNumber !== cycleNumber),
+      archived,
+    ]);
+    setCycleNumber((previous) => previous + 1);
+    setCycleStartWeights(archived.endWeights);
+    clearCurrentCycleProgress();
+  }
+
+  function requestStartNextCycle() {
+    if (actualCurrentIndex !== flatCourse.length) {
+      const accepted = window.confirm(
+        `В цикле ${cycleNumber} выполнено ${completedCount} из ${totalCount} подходов. Перейти к циклу ${cycleNumber + 1}? Незавершённый цикл будет сохранён, и к нему можно будет вернуться.`
+      );
+      if (!accepted) return;
+    }
+    startNextCycle();
+  }
+
+  function switchToCycle(targetCycleNumber: number) {
+    const target = cycleHistory.find((cycle) => cycle.cycleNumber === targetCycleNumber);
+    if (!target) return;
+    const currentArchive = archiveCurrentCycle(actualCurrentIndex === flatCourse.length);
+    const restoredDoneKeys = Array.isArray(target.doneKeys)
+      ? target.doneKeys
+      : target.completedAt
+      ? flatCourse.map((step) => step.key)
+      : [];
+
+    setCycleHistory((previous) =>
+      [...previous.filter((cycle) => cycle.cycleNumber !== targetCycleNumber && cycle.cycleNumber !== cycleNumber), currentArchive]
+        .sort((a, b) => a.cycleNumber - b.cycleNumber)
+    );
+    setCycleNumber(target.cycleNumber);
+    setCycleStartWeights(target.startWeights || authorStartWeights);
+    setDoneKeys(restoredDoneKeys);
+    setCurrentIndex(typeof target.currentIndex === "number" ? target.currentIndex : 0);
+    setWeightRules(target.weightRules || {});
+    setManualSetWeights(target.manualSetWeights || {});
+    setHistory(target.history || []);
     setOverrideStepKey(null);
     setReviewWorkoutKey(null);
     setActiveTab("now");
@@ -1598,6 +1646,35 @@ export default function TrainingTrackerPrototype() {
                     })}
                   </div>
                 ))}
+
+                {cycleHistory.length > 0 ? (
+                  <div className="space-y-2 rounded-[24px] bg-sky-50 p-4 ring-1 ring-sky-200/70">
+                    <div className="text-sm font-medium text-sky-950">Другие сохранённые циклы</div>
+                    <div className="text-xs text-sky-800">Переход восстановит их прогресс и настройки веса.</div>
+                    {[...cycleHistory]
+                      .sort((a, b) => a.cycleNumber - b.cycleNumber)
+                      .map((cycle) => (
+                        <Button
+                          key={cycle.cycleNumber}
+                          className="w-full rounded-2xl bg-white text-slate-900 hover:bg-white/90"
+                          variant="outline"
+                          onClick={() => switchToCycle(cycle.cycleNumber)}
+                        >
+                          {cycle.cycleNumber < cycleNumber ? "Вернуться к" : "Перейти к"} циклу {cycle.cycleNumber}
+                        </Button>
+                      ))}
+                  </div>
+                ) : null}
+
+                {actualCurrentIndex !== flatCourse.length ? (
+                  <Button
+                    className="h-auto w-full rounded-3xl py-3 text-left whitespace-normal sm:text-center"
+                    variant="outline"
+                    onClick={requestStartNextCycle}
+                  >
+                    <ChevronRight className="mr-2 h-4 w-4" /> Перейти к циклу {cycleNumber + 1}
+                  </Button>
+                ) : null}
 
                 <Button
                   className="h-auto w-full rounded-3xl py-3 text-left whitespace-normal sm:text-center"

@@ -11,9 +11,17 @@ export type WeightStep = {
 
 export type CycleSummary = {
   cycleNumber: number;
-  completedAt: string;
+  completedAt: string | null;
   startWeights: Record<WeightIdentity, number | null>;
   endWeights: Record<WeightIdentity, number | null>;
+};
+
+export type CycleArchive = CycleSummary & {
+  doneKeys?: string[];
+  currentIndex?: number;
+  weightRules?: Record<string, WeightRule[]>;
+  manualSetWeights?: Record<string, number | null>;
+  history?: string[];
 };
 
 export function getWeightIdentity(step: Pick<WeightStep, "exerciseId" | "setIndex">): WeightIdentity {
@@ -108,6 +116,34 @@ export function getEndWeights(
       cycleNumber,
       cycleStartWeights,
       authorStartWeights
+    );
+  });
+  return result;
+}
+
+/** Captures each identity's effective state when a cycle is switched early. */
+export function getTransitionWeights(
+  flat: WeightStep[],
+  doneKeys: string[],
+  currentStepIndex: number,
+  globalOverrides: Record<string, WeightRule[]>,
+  directOverrides: Record<string, number | null>,
+  cycleNumber: number,
+  cycleStartWeights: Record<WeightIdentity, number | null>,
+  authorStartWeights: Record<WeightIdentity, number | null>
+) {
+  const done = new Set(doneKeys);
+  const chosenIndex: Record<WeightIdentity, number> = {};
+  flat.forEach((step, index) => {
+    if (step.defaultWeight === null) return;
+    const identity = getWeightIdentity(step);
+    if (!(identity in chosenIndex)) chosenIndex[identity] = index;
+    if (done.has(step.key) || index === currentStepIndex) chosenIndex[identity] = index;
+  });
+  const result = getAuthorStartWeights(flat);
+  Object.entries(chosenIndex).forEach(([identity, index]) => {
+    result[identity as WeightIdentity] = getEffectiveWeight(
+      flat, index, globalOverrides, directOverrides, cycleNumber, cycleStartWeights, authorStartWeights
     );
   });
   return result;
