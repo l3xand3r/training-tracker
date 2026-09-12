@@ -1,99 +1,131 @@
-import type { TrainingState } from "@/hooks/use-training-state";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { useState } from "react";
+import { Check, ChevronRight, Circle, Moon, Play } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { ChevronRight } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { COURSE, formatWeight } from "@/lib/training-course";
+import type { TrainingState } from "@/hooks/use-training-state";
+import { formatWeight } from "@/lib/training-course";
 import { getEffectiveWeight } from "@/lib/cycle-weights";
-export function CoursePlan({ state }: { state: TrainingState }) {
-  const { selectedWeek, setSelectedWeek, selectedSession, setSelectedSession, filteredFlat, flatCourse, doneSet, current, jumpToStep, weightRules, manualSetWeights, cycleNumber, cycleStartWeights, authorStartWeights } = state;
-  return (
-          <div className="space-y-4">
-            <Card className="surface-card">
-              <CardHeader>
-                <CardTitle className="text-lg text-slate-900">Весь курс</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-2">
-                  <Select
-                    value={selectedWeek}
-                    onValueChange={(value) => setSelectedWeek(value ?? "all")}
-                  >
-                    <SelectTrigger aria-label="Неделя курса" className="h-11 w-full rounded-xl">
-                      <SelectValue>{selectedWeek === "all" ? "Все недели" : `Неделя ${selectedWeek}`}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Все недели</SelectItem>
-                      {COURSE.map((w) => (
-                        <SelectItem key={w.week} value={String(w.week)}>
-                          Неделя {w.week}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={selectedSession}
-                    onValueChange={(value) => setSelectedSession(value ?? "all")}
-                  >
-                    <SelectTrigger aria-label="Тренировка курса" className="h-11 w-full rounded-xl">
-                      <SelectValue>{selectedSession === "all" ? "Все тренировки" : `Тренировка ${selectedSession}`}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Все тренировки</SelectItem>
-                      <SelectItem value="1">Тренировка 1</SelectItem>
-                      <SelectItem value="2">Тренировка 2</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
 
-                <ScrollArea className={filteredFlat.length ? "h-[min(65vh,640px)] pr-3" : "pr-3"}>
-                  {filteredFlat.length === 0 ? <div className="rest-message"><h2>Время для отдыха</h2><p>В этой тренировке нет подходов — это отдых по плану курса.</p></div> : null}
-                  <div className="space-y-3">
-                    {filteredFlat.map((item) => {
-                      const idx = flatCourse.findIndex((x) => x.key === item.key);
-                      const done = doneSet.has(item.key);
-                      const active = current?.key === item.key;
-                      return (
-                        <button
-                          key={item.key}
-                          onClick={() => jumpToStep(item.key)}
-                          className={`w-full rounded-2xl p-4 text-left transition ${
-                            active ? "bg-slate-900 text-white" : "bg-slate-100 hover:bg-slate-200"
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className="text-sm opacity-70">
-                                Неделя {item.week} · Тренировка {item.session}
-                              </div>
-                              <div className="mt-1 font-medium">{item.exerciseName}</div>
-                              <div className="mt-1 text-sm opacity-70">
-                                Подход {item.setIndex + 1} · Повторения {item.reps} · Вес{" "}
-                                {formatWeight(
-                                  getEffectiveWeight(flatCourse, idx, weightRules, manualSetWeights, cycleNumber, cycleStartWeights, authorStartWeights)
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Badge
-                                hidden={!done && !active}
-                                variant={done ? "secondary" : active ? "default" : "outline"}
-                                className="rounded-full"
-                              >
-                                {done ? "Готово" : active ? "Сейчас" : ""}
-                              </Badge>
-                              <ChevronRight
-                                className={`h-4 w-4 ${active ? "text-white" : "text-slate-400"}`}
-                              />
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
+export function CoursePlan({
+  state,
+  onOpenCycles,
+}: {
+  state: TrainingState;
+  onOpenCycles: () => void;
+}) {
+  const {
+    workoutGroups,
+    current,
+    cycleNumber,
+    selectedWeek,
+    setSelectedWeek,
+    flatCourse,
+    doneSet,
+    jumpToStep,
+    weightRules,
+    manualSetWeights,
+    cycleStartWeights,
+    authorStartWeights,
+    openWorkoutReview,
+  } = state;
+  const [mode, setMode] = useState<"weeks" | "workouts">("weeks");
+  const [expandedWorkout, setExpandedWorkout] = useState<string | null>(null);
+  const selectedWeekNumber = selectedWeek === "all" ? current?.week ?? 1 : Number(selectedWeek);
+  const selectedWeekGroup = workoutGroups.find((week) => week.week === selectedWeekNumber);
+
+  function openWeek(week: number) {
+    setSelectedWeek(String(week));
+    setExpandedWorkout(null);
+    setMode("workouts");
+    window.scrollTo(0, 0);
+  }
+
+  return (
+    <div className="screen plan-screen">
+      <header className="screen-header">
+        <h1>План</h1>
+        <button className="cycle-chip" type="button" onClick={onOpenCycles}>Цикл {cycleNumber}<ChevronRight /></button>
+      </header>
+
+      <div className="segment-control" role="tablist" aria-label="Просмотр плана">
+        <button type="button" role="tab" aria-selected={mode === "weeks"} onClick={() => setMode("weeks")}>Недели</button>
+        <button type="button" role="tab" aria-selected={mode === "workouts"} onClick={() => setMode("workouts")}>Тренировки</button>
+      </div>
+
+      {mode === "weeks" ? (
+        <div className="week-list">
+          {workoutGroups.map((week) => {
+            const activeSessions = week.sessions.filter((session) => session.status !== "rest");
+            const restCount = week.sessions.length - activeSessions.length;
+            const complete = activeSessions.length > 0 && activeSessions.every((session) => session.status === "done");
+            const active = week.sessions.some((session) => session.status === "current");
+            return (
+              <button key={week.week} type="button" className={active ? "current" : complete ? "complete" : ""} onClick={() => openWeek(week.week)}>
+                <span className="week-status">
+                  {complete ? <Check /> : restCount ? <Moon /> : <Circle />}
+                </span>
+                <span className="week-copy">
+                  <strong>Неделя {week.week}</strong>
+                  <small>{activeSessions.length} {activeSessions.length === 1 ? "тренировка" : "тренировки"}{restCount ? ` · ${restCount} отдых` : ""}</small>
+                </span>
+                <ChevronRight aria-hidden="true" />
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="workout-plan-list">
+          <div className="drill-header">
+            <div><small>12-недельный курс</small><h2>Неделя {selectedWeekNumber}</h2></div>
+            <button type="button" onClick={() => setMode("weeks")}>Выбрать неделю</button>
+          </div>
+
+          {selectedWeekGroup?.sessions.map((session) => {
+            const steps = flatCourse.filter((step) => step.week === session.week && step.session === session.session);
+            const expanded = expandedWorkout === session.key;
+            const isRest = session.status === "rest";
+            return (
+              <section key={session.key} className={`workout-plan-card ${session.status}`}>
+                <button
+                  type="button"
+                  className="workout-plan-summary"
+                  disabled={isRest}
+                  aria-expanded={!isRest ? expanded : undefined}
+                  onClick={() => setExpandedWorkout(expanded ? null : session.key)}
+                >
+                  <span className="workout-plan-status">{isRest ? <Moon /> : session.status === "done" ? <Check /> : <Play />}</span>
+                  <span><strong>{session.title}</strong><small>{isRest ? "Отдых по плану" : `${session.done} из ${session.total} подходов`}</small></span>
+                  {!isRest ? <ChevronRight /> : null}
+                </button>
+
+                {expanded && !isRest ? (
+                  <div className="workout-plan-details">
+                    <button className="review-workout-button" type="button" onClick={() => { openWorkoutReview(session.week, session.session); window.scrollTo(0, 0); }}>Просмотреть тренировку<ChevronRight /></button>
+                    <div className="set-detail-list">
+                      {steps.map((step) => {
+                        const stepIndex = flatCourse.findIndex((item) => item.key === step.key);
+                        const done = doneSet.has(step.key);
+                        const active = current?.key === step.key;
+                        return (
+                          <button
+                            key={step.key}
+                            type="button"
+                            className={active ? "active" : done ? "done" : ""}
+                            onClick={() => jumpToStep(step.key)}
+                          >
+                            <span>{done ? <Check /> : <Circle />}</span>
+                            <span><strong>{step.exerciseName}</strong><small>Подход {step.setIndex + 1} · {step.reps} повт.</small></span>
+                            <Badge>{formatWeight(getEffectiveWeight(flatCourse, stepIndex, weightRules, manualSetWeights, cycleNumber, cycleStartWeights, authorStartWeights))}</Badge>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </div>);
+                ) : null}
+              </section>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }

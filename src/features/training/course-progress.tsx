@@ -1,69 +1,121 @@
-import type { TrainingState } from "@/hooks/use-training-state";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Trophy } from "lucide-react";
+import { useState, type CSSProperties } from "react";
+import { Check, ChevronRight, Circle, Moon } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-export function CourseProgress({ state }: { state: TrainingState }) {
-  const { workoutGroups, openWorkoutReview, progress, completedCount, totalCount, cycleNumber } = state;
-  return (          <div className="space-y-4">
-            <Card className="surface-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg text-slate-900">
-                  <Trophy className="h-5 w-5" /> Ход курса
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="course-summary"><div><span>Цикл {cycleNumber} · 12 недель</span><strong>{progress}%</strong></div><Progress aria-label="Прогресс курса" value={progress} /><p>{completedCount} из {totalCount} подходов выполнено</p></div>
-                {workoutGroups.map((week) => (
-                  <div key={week.week} className="space-y-2">
-                    <div className="font-medium">Неделя {week.week}</div>
-                    {week.sessions.map((session) => {
-                      const clickable = session.status === "done" || session.status === "upcoming" || session.status === "current";
-                      return (
-                        <button
-                          key={session.key}
-                          type="button"
-                          disabled={!clickable}
-                          onClick={() => { openWorkoutReview(session.week, session.session); window.scrollTo(0, 0); }}
-                          className="w-full session-row"
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <div className="font-medium">{session.title}</div>
-                              <div className="mt-1 text-sm text-slate-500">
-                                {session.status === "rest"
-                                  ? "Отдых"
-                                  : `${session.done} из ${session.total} подходов`}
-                              </div>
-                            </div>
-                            <Badge
-                              variant={
-                                session.status === "done"
-                                  ? "secondary"
-                                  : session.status === "current"
-                                  ? "default"
-                                  : "outline"
-                              }
-                              className="rounded-full"
-                            >
-                              {session.status === "rest"
-                                ? "Отдых"
-                                : session.status === "done"
-                                ? "Открыть"
-                                : session.status === "current"
-                                ? "Текущая"
-                                : "Открыть"}
-                            </Badge>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ))}
+import type { TrainingState } from "@/hooks/use-training-state";
 
+export function CourseProgress({
+  state,
+  onOpenCycles,
+}: {
+  state: TrainingState;
+  onOpenCycles: () => void;
+}) {
+  const {
+    workoutGroups,
+    openWorkoutReview,
+    progress,
+    completedCount,
+    totalCount,
+    cycleNumber,
+    current,
+    doneInCurrentSession,
+    totalInCurrentSession,
+    currentSessionProgress,
+  } = state;
+  const [selectedWeek, setSelectedWeek] = useState(current?.week ?? 1);
+  const selectedWeekGroup = workoutGroups.find((week) => week.week === selectedWeek);
+  const totalWorkouts = workoutGroups.reduce(
+    (total, week) => total + week.sessions.filter((session) => session.status !== "rest").length,
+    0
+  );
+  const completedWorkouts = workoutGroups.reduce(
+    (total, week) => total + week.sessions.filter((session) => session.status === "done").length,
+    0
+  );
+  const completedWeeks = workoutGroups.filter((week) => {
+    const activeSessions = week.sessions.filter((session) => session.status !== "rest");
+    return activeSessions.length > 0 && activeSessions.every((session) => session.status === "done");
+  }).length;
 
-              </CardContent>
-            </Card>
-          </div>
-);
+  return (
+    <div className="screen progress-screen">
+      <header className="screen-header">
+        <h1>Прогресс</h1>
+        <button className="cycle-chip" type="button" onClick={onOpenCycles}>Цикл {cycleNumber}<ChevronRight /></button>
+      </header>
+
+      <section className="progress-overview">
+        <div className="progress-ring" style={{ "--progress": `${progress * 3.6}deg` } as CSSProperties}>
+          <span>{progress}%</span>
+        </div>
+        <div><h2>{progress === 100 ? "Курс завершён" : "Курс в процессе"}</h2><p>{completedWeeks} из 12 недель</p><p>{completedWorkouts} из {totalWorkouts} тренировок</p></div>
+      </section>
+
+      <section className="weeks-overview">
+        <h2>Недели</h2>
+        <div className="week-grid">
+          {workoutGroups.map((week) => {
+            const activeSessions = week.sessions.filter((session) => session.status !== "rest");
+            const complete = activeSessions.length > 0 && activeSessions.every((session) => session.status === "done");
+            const active = week.sessions.some((session) => session.status === "current");
+            const hasRest = week.sessions.some((session) => session.status === "rest");
+            return (
+              <button
+                key={week.week}
+                type="button"
+                className={`${complete ? "complete" : active ? "current" : "future"} ${hasRest ? "has-rest" : ""} ${selectedWeek === week.week ? "selected" : ""}`}
+                aria-label={`Неделя ${week.week}${complete ? ", завершена" : active ? ", текущая" : ", будущая"}${hasRest ? ", есть отдых" : ""}`}
+                onClick={() => setSelectedWeek(week.week)}
+              >
+                <span>{week.week}</span>
+                {complete ? <Check /> : hasRest && !active ? <Moon /> : <Circle />}
+              </button>
+            );
+          })}
+        </div>
+        <div className="progress-legend">
+          <span><i className="complete" />Завершена</span><span><i className="current" />Текущая</span><span><i className="future" />Будущая</span><span><i className="rest" />Отдых</span>
+        </div>
+      </section>
+
+      <section className="selected-week-card">
+        <header><div><small>Выбрана неделя</small><h2>Неделя {selectedWeek}</h2></div><span>{selectedWeekGroup?.sessions.filter((session) => session.status !== "rest").length ?? 0} тренировки</span></header>
+        {selectedWeekGroup?.sessions.map((session) => (
+          <button
+            key={session.key}
+            type="button"
+            disabled={session.status === "rest"}
+            onClick={() => { openWorkoutReview(session.week, session.session); window.scrollTo(0, 0); }}
+          >
+            <span className={`session-state ${session.status}`}>{session.status === "done" ? <Check /> : session.status === "rest" ? <Moon /> : <Circle />}</span>
+            <span><strong>{session.title}</strong><small>{session.status === "rest" ? "Отдых" : `${session.done} из ${session.total} подходов`}</small></span>
+            {session.status !== "rest" ? <ChevronRight /> : null}
+          </button>
+        ))}
+      </section>
+
+      {current ? (
+        <section className="current-workout-summary">
+          <header><h2>Текущая тренировка</h2><button type="button" onClick={() => openWorkoutReview(current.week, current.session)}>Открыть<ChevronRight /></button></header>
+          <strong>{`Неделя ${current.week} · Тренировка ${current.session}`}</strong>
+          <div><span>{doneInCurrentSession} из {totalInCurrentSession} подходов</span><b>{currentSessionProgress}%</b></div>
+          <Progress value={currentSessionProgress} aria-label="Прогресс текущей тренировки" />
+        </section>
+      ) : null}
+
+      <details className="history-details">
+        <summary>Посмотреть всю историю<ChevronRight /></summary>
+        <div>
+          {workoutGroups.flatMap((week) => week.sessions).filter((session) => session.status !== "rest").map((session) => (
+            <button key={session.key} type="button" onClick={() => openWorkoutReview(session.week, session.session)}>
+              <span><strong>Неделя {session.week} · {session.title}</strong><small>{session.done} из {session.total} подходов</small></span>
+              <ChevronRight />
+            </button>
+          ))}
+        </div>
+      </details>
+
+      <p className="overall-set-count">Всего выполнено {completedCount} из {totalCount} подходов</p>
+    </div>
+  );
 }
