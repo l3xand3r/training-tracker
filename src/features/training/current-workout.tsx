@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import type { TrainingState } from "@/hooks/use-training-state";
+import { getEffectiveReps } from "@/lib/cycle-reps";
 import { formatWeight, getSessionLabel } from "@/lib/training-course";
 import { getEffectiveWeight } from "@/lib/cycle-weights";
 import { WorkoutReview } from "./workout-review";
@@ -143,7 +144,7 @@ export function CurrentWorkout({
             <section className="current-exercise-card" aria-label="Текущий подход">
               <div className="pair-position"><span className="position-dot" />Пара {pairIndex + 1} из {pairNames.length}</div>
               <h2 aria-live="polite">{current.exerciseName}</h2>
-              <p className="reps-line">{current.reps} повторений</p>
+              <p className="reps-line">{getEffectiveReps(current, cycleNumber)} повторений</p>
               {current.note ? <p className="exercise-note">{current.note}</p> : null}
               {isOverrideActive ? <p className="override-note">После этого подхода продолжится обычная очередь.</p> : null}
 
@@ -170,7 +171,7 @@ export function CurrentWorkout({
                       onClick={() => { chooseExerciseStep(step.exerciseId); window.scrollTo(0, 0); }}
                     >
                       {completed ? <CheckCircle2 aria-hidden="true" /> : <Circle aria-hidden="true" />}
-                      <span><strong>{step.exerciseName}</strong><small>{step.reps} повт.{weight === null ? "" : ` · ${formatWeight(weight)}`}</small></span>
+                      <span><strong>{step.exerciseName}</strong><small>{getEffectiveReps(step, cycleNumber)} повт.{weight === null ? "" : ` · ${formatWeight(weight)}`}</small></span>
                       {canChoose ? <ChevronRight aria-hidden="true" /> : null}
                     </button>
                   ))}
@@ -184,7 +185,7 @@ export function CurrentWorkout({
                 {nextPairItems.map((step) => (
                   <div className="next-exercise" key={step.exerciseId}>
                     <span className="next-icon"><Dumbbell aria-hidden="true" /></span>
-                    <span><strong>{step.exerciseName}</strong><small>{step.reps} повт.</small></span>
+                    <span><strong>{step.exerciseName}</strong><small>{getEffectiveReps(step, cycleNumber)} повт.</small></span>
                   </div>
                 ))}
               </section>

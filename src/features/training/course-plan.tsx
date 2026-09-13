@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check, ChevronRight, Circle, Moon, Play } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { TrainingState } from "@/hooks/use-training-state";
+import { getEffectiveReps } from "@/lib/cycle-reps";
 import { formatWeight } from "@/lib/training-course";
 import { getEffectiveWeight } from "@/lib/cycle-weights";
 
@@ -113,7 +114,7 @@ export function CoursePlan({
                             onClick={() => jumpToStep(step.key)}
                           >
                             <span>{done ? <Check /> : <Circle />}</span>
-                            <span><strong>{step.exerciseName}</strong><small>Подход {step.setIndex + 1} · {step.reps} повт.</small></span>
+                            <span><strong>{step.exerciseName}</strong><small>Подход {step.setIndex + 1} · {getEffectiveReps(step, cycleNumber)} повт.</small></span>
                             <Badge>{formatWeight(getEffectiveWeight(flatCourse, stepIndex, weightRules, manualSetWeights, cycleNumber, cycleStartWeights, authorStartWeights))}</Badge>
                           </button>
                         );
